@@ -1,0 +1,195 @@
+'use client';
+
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { v4 as uuidv4 } from 'uuid';
+import type { RoutePoint, RouteMeta, SavedRoute, PointType } from '@/types/routes';
+
+type AppMode = 'view' | 'create';
+type BuilderTool = 'draw_path' | 'add_poi';
+
+interface RouteBuilderState {
+  // app mode
+  mode: AppMode;
+  builderTool: BuilderTool;
+
+  // builder state
+  points: RoutePoint[];
+  meta: Partial<RouteMeta>;
+  generatedGeometry: GeoJSON.LineString | null;
+  generatedDistance: number | null;
+  generatedDuration: number | null;
+  isGenerating: boolean;
+  generateError: string | null;
+
+  // saved routes
+  savedRoutes: SavedRoute[];
+  selectedRouteId: string | null;
+
+  // mode actions
+  setMode: (mode: AppMode) => void;
+  setBuilderTool: (tool: BuilderTool) => void;
+
+  // point actions
+  addPoint: (point: Omit<RoutePoint, 'id' | 'order'>) => void;
+  addPointAtLatLng: (lat: number, lng: number) => void;
+  updatePoint: (id: string, patch: Partial<RoutePoint>) => void;
+  removePoint: (id: string) => void;
+  reorderPoints: (orderedIds: string[]) => void;
+
+  // meta actions
+  setMeta: (patch: Partial<RouteMeta>) => void;
+
+  // generation actions
+  setGeneratedGeometry: (
+    geometry: GeoJSON.LineString | null,
+    distance?: number,
+    duration?: number
+  ) => void;
+  setIsGenerating: (v: boolean) => void;
+  setGenerateError: (err: string | null) => void;
+
+  // saved route actions
+  setSavedRoutes: (routes: SavedRoute[]) => void;
+  addSavedRoute: (route: SavedRoute) => void;
+  updateSavedRoute: (route: SavedRoute) => void;
+  removeSavedRoute: (id: string) => void;
+  selectRoute: (id: string | null) => void;
+
+  // reset builder
+  resetBuilder: () => void;
+}
+
+const DEFAULT_META: Partial<RouteMeta> = {
+  name: '',
+  description: '',
+  color: '#3b82f6',
+  status: 'draft',
+  risk_level: 'low',
+  travel_mode: 'driving',
+};
+
+function nextPointType(points: RoutePoint[]): PointType {
+  if (points.length === 0) return 'start';
+  return 'waypoint';
+}
+
+export const useRouteBuilderStore = create<RouteBuilderState>()(
+  persist(
+    (set, get) => ({
+      mode: 'view',
+      builderTool: 'draw_path',
+      points: [],
+      meta: { ...DEFAULT_META },
+      generatedGeometry: null,
+      generatedDistance: null,
+      generatedDuration: null,
+      isGenerating: false,
+      generateError: null,
+      savedRoutes: [],
+      selectedRouteId: null,
+
+      setMode: (mode) => set({ mode }),
+      setBuilderTool: (tool) => set({ builderTool: tool }),
+
+      addPoint: (point) =>
+        set((s) => {
+          const order = s.points.length;
+          return {
+            points: [...s.points, { ...point, id: uuidv4(), order }],
+            generatedGeometry: null,
+          };
+        }),
+
+      addPointAtLatLng: (lat, lng) => {
+        const { points, addPoint, builderTool } = get();
+        
+        if (builderTool === 'add_poi') {
+          addPoint({ label: 'New Checkpost', type: 'poi', lat, lng, category: 'checkpost' });
+          return;
+        }
+
+        const type = nextPointType(points.filter(p => p.type !== 'poi'));
+        const pathPoints = points.filter(p => p.type !== 'poi').length;
+        const label =
+          type === 'start'
+            ? 'Start'
+            : type === 'destination'
+            ? 'Destination'
+            : `Waypoint ${pathPoints}`;
+        addPoint({ label, type, lat, lng });
+      },
+
+      updatePoint: (id, patch) =>
+        set((s) => ({
+          points: s.points.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+          generatedGeometry: null,
+        })),
+
+      removePoint: (id) =>
+        set((s) => {
+          const filtered = s.points
+            .filter((p) => p.id !== id)
+            .map((p, i) => ({ ...p, order: i }));
+          return { points: filtered, generatedGeometry: null };
+        }),
+
+      reorderPoints: (orderedIds) =>
+        set((s) => {
+          const map = new Map(s.points.map((p) => [p.id, p]));
+          const reordered = orderedIds
+            .map((id, i) => {
+              const p = map.get(id);
+              return p ? { ...p, order: i } : null;
+            })
+            .filter(Boolean) as RoutePoint[];
+          return { points: reordered, generatedGeometry: null };
+        }),
+
+      setMeta: (patch) =>
+        set((s) => ({ meta: { ...s.meta, ...patch } })),
+
+      setGeneratedGeometry: (geometry, distance, duration) =>
+        set({
+          generatedGeometry: geometry,
+          generatedDistance: distance ?? null,
+          generatedDuration: duration ?? null,
+        }),
+
+      setIsGenerating: (v) => set({ isGenerating: v }),
+
+      setGenerateError: (err) => set({ generateError: err }),
+
+      setSavedRoutes: (routes) => set({ savedRoutes: routes }),
+
+      addSavedRoute: (route) =>
+        set((s) => ({ savedRoutes: [route, ...s.savedRoutes] })),
+
+      updateSavedRoute: (route) =>
+        set((s) => ({
+          savedRoutes: s.savedRoutes.map((r) => (r.id === route.id ? route : r)),
+        })),
+
+      removeSavedRoute: (id) =>
+        set((s) => ({ savedRoutes: s.savedRoutes.filter((r) => r.id !== id) })),
+
+      selectRoute: (id) => set({ selectedRouteId: id, mode: 'view' }),
+
+      resetBuilder: () =>
+        set({
+          points: [],
+          meta: { ...DEFAULT_META },
+          generatedGeometry: null,
+          generatedDistance: null,
+          generatedDuration: null,
+          isGenerating: false,
+          generateError: null,
+          builderTool: 'draw_path',
+        }),
+    }),
+    {
+      name: 'field-data-routes',
+      partialize: (s) => ({ savedRoutes: s.savedRoutes }),
+    }
+  )
+);

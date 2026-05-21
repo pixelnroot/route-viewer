@@ -1,65 +1,95 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import { Menu, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+import dynamic from 'next/dynamic';
+import Image from 'next/image';
+import RouteSidebar from '@/components/sidebar/RouteSidebar';
+import RouteBuilder from '@/components/routes/RouteBuilder';
+import RouteDetailPanel from '@/components/routes/RouteDetailPanel';
+import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
+
+// MapView must be client-side only — MapLibre/deck.gl need browser APIs
+const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false });
 
 export default function Home() {
+  const { mode, selectedRouteId } = useRouteBuilderStore();
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
+
+  const showRightPanel = mode === 'create' || (mode === 'view' && selectedRouteId);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="flex h-full w-full overflow-hidden relative">
+      {/* Left Sidebar */}
+      {leftOpen ? (
+        <div className="relative h-full z-10">
+          <RouteSidebar />
+          <Button 
+            variant="secondary" 
+            size="icon" 
+            className="absolute top-4 -right-4 z-20 w-8 h-8 rounded-full shadow-md border"
+            onClick={() => setLeftOpen(false)}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
         </div>
-      </main>
+      ) : (
+        <Button 
+          variant="secondary" 
+          size="icon" 
+          className="absolute top-4 left-4 z-20 w-10 h-10 shadow-md border rounded-md"
+          onClick={() => setLeftOpen(true)}
+        >
+          <Menu className="w-5 h-5" />
+        </Button>
+      )}
+
+      {/* Map — fills remaining space */}
+      <div className="flex-1 relative">
+        <MapView />
+      </div>
+
+      {/* Right panel */}
+      {rightOpen && (
+        <div className="relative h-full z-10">
+          <Button 
+            variant="secondary" 
+            size="icon" 
+            className="absolute top-4 -left-4 z-20 w-8 h-8 rounded-full shadow-md border"
+            onClick={() => setRightOpen(false)}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+          {mode === 'create' && <RouteBuilder />}
+          {mode === 'view' && selectedRouteId && <RouteDetailPanel />}
+          {mode === 'view' && !selectedRouteId && (
+            <div className="flex flex-col items-center justify-center h-full bg-background border-l border-border w-80 text-center p-6">
+              <div className="w-24 h-24 mb-6 rounded-full bg-primary/10 flex items-center justify-center">
+                <Image src="/globe.svg" alt="Logo" width={48} height={48} className="opacity-80 dark:invert" />
+              </div>
+              <h2 className="text-lg font-semibold mb-2">Field Route Intelligence</h2>
+              <p className="text-sm text-muted-foreground">
+                Select a route from the sidebar to view its details, or create a new route.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Toggle button when right panel is collapsed */}
+      {!rightOpen && (
+        <Button 
+          variant="secondary" 
+          size="icon" 
+          className="absolute top-4 right-4 z-20 w-10 h-10 shadow-md border rounded-md"
+          onClick={() => setRightOpen(true)}
+        >
+          <Menu className="w-5 h-5" />
+        </Button>
+      )}
     </div>
   );
 }

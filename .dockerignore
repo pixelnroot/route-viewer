@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.gitignore
+README.md
+data/
+*.tsbuildinfo
+next-env.d.ts
+.env*
+nginx/
+.github/
