@@ -32,6 +32,7 @@ export default function RouteBuilder() {
     generatedDuration,
     isGenerating,
     generateError,
+    categories,
     setMeta,
     setMode,
     setBuilderTool,
@@ -240,6 +241,34 @@ export default function RouteBuilder() {
                 </SelectContent>
               </Select>
             </div>
+
+            {categories.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Category</Label>
+                <Select
+                  value={meta.category_id ?? ''}
+                  onValueChange={(v) => setMeta({ category_id: v || undefined })}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="No category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">No category</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            className="inline-block w-2 h-2 rounded-full"
+                            style={{ backgroundColor: cat.color }}
+                          />
+                          {cat.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <RouteColorPicker
               value={meta.color ?? '#3b82f6'}

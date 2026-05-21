@@ -7,7 +7,7 @@ import { PathLayer } from '@deck.gl/layers';
 import { Layers } from 'lucide-react';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { Button } from '@/components/ui/button';
-import type { PointType, SavedRoute, RoutePoint } from '@/types/routes';
+import type { PointType, RoutePoint } from '@/types/routes';
 
 const STREET_STYLE = 'https://tiles.openfreemap.org/styles/bright';
 
@@ -60,7 +60,7 @@ function createMarkerEl(type: PointType, label: string, category?: string, icon?
     box-shadow: 0 2px 6px rgba(0,0,0,0.4);
     display: flex; align-items: center; justify-content: center;
     color: white; font-weight: 700; font-size: ${hasIcon ? '18px' : '11px'};
-    cursor: grab;
+    cursor: pointer;
     transform: ${isDiamond ? 'rotate(45deg)' : 'none'};
     line-height: 1;
   `;
@@ -69,9 +69,7 @@ function createMarkerEl(type: PointType, label: string, category?: string, icon?
     inner.textContent = icon!;
   } else {
     let char = label.charAt(0).toUpperCase() || POINT_LETTER[type];
-    if (type === 'poi' && category) {
-      char = category.charAt(0).toUpperCase();
-    }
+    if (type === 'poi' && category) char = category.charAt(0).toUpperCase();
     inner.textContent = char;
     if (isDiamond) inner.style.transform = 'rotate(-45deg)';
   }
@@ -91,8 +89,10 @@ function getPopupHTML(point: RoutePoint) {
 }
 
 interface PathData {
+  routeId: string;
   path: [number, number][];
   color: [number, number, number, number];
+  colorHighlight: [number, number, number, number];
   width: number;
 }
 
@@ -120,16 +120,18 @@ export default function MapView() {
   const {
     mode,
     points: builderPoints,
-    generatedGeometry,
+    builderTool,
     savedRoutes,
     selectedRouteId,
+    categoryFilter,
+    selectRoute,
     addPointAtLatLng,
     updatePoint,
   } = useRouteBuilderStore();
 
-  const activePoints = mode === 'create' 
-    ? builderPoints 
-    : (selectedRouteId ? savedRoutes.find(r => r.id === selectedRouteId)?.points || [] : []);
+  const activePoints = mode === 'create'
+    ? builderPoints
+    : (selectedRouteId ? savedRoutes.find((r) => r.id === selectedRouteId)?.points ?? [] : []);
 
   // Init map + deck.gl overlay
   useEffect(() => {
@@ -146,6 +148,15 @@ export default function MapView() {
     const overlay = new MapboxOverlay({ layers: [] });
     map.on('load', () => map.addControl(overlay as never));
 
+    map.on('click', (e: maplibregl.MapMouseEvent) => {
+      const { mode: m, builderTool: t, addPointAtLatLng: add } = useRouteBuilderStore.getState();
+      if (m === 'create') {
+        add(e.lngLat.lat, e.lngLat.lng);
+      } else {
+        useRouteBuilderStore.getState().selectRoute(null);
+      }
+    });
+
     mapRef.current = map;
     overlayRef.current = overlay;
 
@@ -156,7 +167,7 @@ export default function MapView() {
       mapRef.current = null;
       overlayRef.current = null;
     };
-  }, []); // Intentionally only run once on mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Change style when mapMode changes
   useEffect(() => {
@@ -165,18 +176,6 @@ export default function MapView() {
     map.setStyle(mapMode === 'street' ? STREET_STYLE : (SATELLITE_STYLE as any));
   }, [mapMode]);
 
-  // Click handler — create mode only
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const handler = (e: maplibregl.MapMouseEvent) => {
-      if (mode !== 'create') return;
-      addPointAtLatLng(e.lngLat.lat, e.lngLat.lng);
-    };
-    map.on('click', handler);
-    return () => { map.off('click', handler); };
-  }, [mode, addPointAtLatLng]);
-
   // Cursor in create mode
   useEffect(() => {
     const map = mapRef.current;
@@ -184,16 +183,14 @@ export default function MapView() {
     map.getCanvas().style.cursor = mode === 'create' ? 'crosshair' : '';
   }, [mode]);
 
-  // Sync markers to points
+  // Sync markers to selected route's POI/start/destination points
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Filter out waypoints so they don't show as markers
-    const visiblePoints = activePoints.filter(p => p.type !== 'waypoint');
+    const visiblePoints = activePoints.filter((p) => p.type !== 'waypoint');
     const current = new Set(visiblePoints.map((p) => p.id));
 
-    // Remove stale
     for (const [id, marker] of markersRef.current) {
       if (!current.has(id)) {
         marker.remove();
@@ -201,7 +198,6 @@ export default function MapView() {
       }
     }
 
-    // Add / update
     for (const point of visiblePoints) {
       if (markersRef.current.has(point.id)) {
         const m = markersRef.current.get(point.id)!;
@@ -209,18 +205,18 @@ export default function MapView() {
         if (Math.abs(ll.lat - point.lat) > 1e-7 || Math.abs(ll.lng - point.lng) > 1e-7) {
           m.setLngLat([point.lng, point.lat]);
         }
-        m.setDraggable(mode === 'create');
-
-        // Refresh marker element when icon/category/label changes
         const newEl = createMarkerEl(point.type, point.label, point.category, point.icon);
         const oldEl = m.getElement();
-        if (oldEl.dataset.icon !== (point.icon ?? '') || oldEl.dataset.category !== (point.category ?? '') || oldEl.dataset.label !== point.label) {
+        if (
+          oldEl.dataset.icon !== (point.icon ?? '') ||
+          oldEl.dataset.category !== (point.category ?? '') ||
+          oldEl.dataset.label !== point.label
+        ) {
           newEl.dataset.icon = point.icon ?? '';
           newEl.dataset.category = point.category ?? '';
           newEl.dataset.label = point.label;
           oldEl.replaceWith(newEl);
         }
-
         if (point.type === 'poi') {
           const popup = m.getPopup();
           if (popup) popup.setHTML(getPopupHTML(point));
@@ -232,18 +228,20 @@ export default function MapView() {
         el.dataset.label = point.label;
         const marker = new Marker({ element: el, draggable: mode === 'create' })
           .setLngLat([point.lng, point.lat]);
-          
+
         if (point.type === 'poi') {
-          marker.setPopup(new Popup({ offset: 25, closeButton: false }).setHTML(getPopupHTML(point)));
+          marker.setPopup(
+            new Popup({ offset: 25, closeButton: false }).setHTML(getPopupHTML(point))
+          );
         }
-        
-        marker.addTo(map);
 
         marker.on('dragend', () => {
           if (mode !== 'create') return;
           const { lat, lng } = marker.getLngLat();
           updatePoint(point.id, { lat, lng });
         });
+
+        marker.addTo(map);
         markersRef.current.set(point.id, marker);
       }
     }
@@ -256,43 +254,58 @@ export default function MapView() {
 
     const layers = [];
 
-    // Saved route lines
-    const savedData: PathData[] = savedRoutes
-      .filter((r) => r.geometry?.coordinates?.length)
-      .map((r) => ({
+    // Saved routes (hidden in create mode to reduce clutter)
+    if (mode !== 'create') {
+      const routesToShow = savedRoutes.filter((r) => {
+        if (!r.geometry?.coordinates?.length) return false;
+        if (categoryFilter && r.category_id !== categoryFilter) return false;
+        return true;
+      });
+
+      const savedData: PathData[] = routesToShow.map((r) => ({
+        routeId: r.id,
         path: r.geometry!.coordinates as [number, number][],
-        color: hexToRgba(r.color),
-        width: 4,
+        color: r.id === selectedRouteId ? hexToRgba(r.color, 255) : hexToRgba(r.color, 200),
+        colorHighlight: hexToRgba(r.color, 255),
+        width: r.id === selectedRouteId ? 7 : 4,
       }));
 
-    if (savedData.length) {
-      layers.push(
-        new PathLayer<PathData>({
-          id: 'saved-routes',
-          data: savedData,
-          getPath: (d) => d.path,
-          getColor: (d) => d.color,
-          getWidth: (d) => d.width,
-          widthUnits: 'pixels',
-          widthMinPixels: 2,
-          jointRounded: true,
-          capRounded: true,
-        })
-      );
+      if (savedData.length) {
+        layers.push(
+          new PathLayer<PathData>({
+            id: 'saved-routes',
+            data: savedData,
+            getPath: (d) => d.path,
+            getColor: (d) => d.color,
+            getWidth: (d) => d.width,
+            widthUnits: 'pixels',
+            widthMinPixels: 2,
+            jointRounded: true,
+            capRounded: true,
+            pickable: true,
+            autoHighlight: true,
+            highlightColor: [255, 255, 255, 80],
+            onClick: (info) => {
+              if (info.object) selectRoute((info.object as PathData).routeId);
+            },
+          })
+        );
+      }
     }
 
-    // In-progress preview
+    // In-progress preview geometry
+    const { generatedGeometry } = useRouteBuilderStore.getState();
     if (generatedGeometry?.coordinates?.length) {
       layers.push(
         new PathLayer<PathData>({
           id: 'preview-route',
-          data: [
-            {
-              path: generatedGeometry.coordinates as [number, number][],
-              color: [255, 140, 0, 240],
-              width: 5,
-            },
-          ],
+          data: [{
+            routeId: '__preview__',
+            path: generatedGeometry.coordinates as [number, number][],
+            color: [255, 140, 0, 240],
+            colorHighlight: [255, 140, 0, 255],
+            width: 5,
+          }],
           getPath: (d) => d.path,
           getColor: (d) => d.color,
           getWidth: (d) => d.width,
@@ -300,12 +313,13 @@ export default function MapView() {
           widthMinPixels: 3,
           jointRounded: true,
           capRounded: true,
+          pickable: false,
         })
       );
     }
 
     overlay.setProps({ layers });
-  }, [savedRoutes, generatedGeometry]);
+  }, [savedRoutes, selectedRouteId, categoryFilter, mode, selectRoute]);
 
   // Zoom to selected route
   useEffect(() => {
@@ -318,15 +332,15 @@ export default function MapView() {
     const lats = coords.map((c) => c[1]);
     map.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 80, duration: 800 }
+      { padding: 120, duration: 800 }
     );
   }, [selectedRouteId, savedRoutes]);
 
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
-      
-      {/* Map Mode Toggle Control */}
+
+      {/* Map style toggle */}
       <div className="absolute bottom-6 right-6 z-10 flex flex-col items-end gap-2">
         {menuOpen && (
           <div className="bg-background border rounded-md shadow-lg p-1 min-w-[120px] flex flex-col gap-1">
@@ -334,19 +348,19 @@ export default function MapView() {
               className={`text-sm px-3 py-1.5 rounded-sm text-left ${mapMode === 'street' ? 'bg-accent font-medium' : 'hover:bg-accent/50'}`}
               onClick={() => { setMapMode('street'); setMenuOpen(false); }}
             >
-              Street (Bright)
+              Street
             </button>
             <button
               className={`text-sm px-3 py-1.5 rounded-sm text-left ${mapMode === 'satellite' ? 'bg-accent font-medium' : 'hover:bg-accent/50'}`}
               onClick={() => { setMapMode('satellite'); setMenuOpen(false); }}
             >
-              Satellite (Esri)
+              Satellite
             </button>
           </div>
         )}
-        <Button 
-          variant="secondary" 
-          size="icon" 
+        <Button
+          variant="secondary"
+          size="icon"
           className="shadow-lg border h-10 w-10"
           onClick={() => setMenuOpen(!menuOpen)}
         >

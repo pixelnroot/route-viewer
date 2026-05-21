@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { RoutePoint, RouteMeta, SavedRoute, PointType } from '@/types/routes';
+import type { RoutePoint, RouteMeta, SavedRoute, PointType, Category } from '@/types/routes';
 
 type AppMode = 'view' | 'create';
 type BuilderTool = 'draw_path' | 'add_poi';
@@ -25,6 +25,15 @@ interface RouteBuilderState {
   // saved routes
   savedRoutes: SavedRoute[];
   selectedRouteId: string | null;
+
+  // categories
+  categories: Category[];
+  categoryFilter: string | null;
+  setCategories: (cats: Category[]) => void;
+  addCategory: (cat: Category) => void;
+  updateCategory: (cat: Category) => void;
+  removeCategory: (id: string) => void;
+  setCategoryFilter: (id: string | null) => void;
 
   // mode actions
   setMode: (mode: AppMode) => void;
@@ -88,6 +97,8 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       generateError: null,
       savedRoutes: [],
       selectedRouteId: null,
+      categories: [],
+      categoryFilter: null,
 
       setMode: (mode) => set({ mode }),
       setBuilderTool: (tool) => set({ builderTool: tool }),
@@ -159,6 +170,14 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       setIsGenerating: (v) => set({ isGenerating: v }),
 
       setGenerateError: (err) => set({ generateError: err }),
+
+      setCategories: (cats) => set({ categories: cats }),
+      addCategory: (cat) => set((s) => ({ categories: [...s.categories, cat] })),
+      updateCategory: (cat) =>
+        set((s) => ({ categories: s.categories.map((c) => (c.id === cat.id ? cat : c)) })),
+      removeCategory: (id) =>
+        set((s) => ({ categories: s.categories.filter((c) => c.id !== id) })),
+      setCategoryFilter: (id) => set({ categoryFilter: id }),
 
       setSavedRoutes: (routes) => set({ savedRoutes: routes }),
 

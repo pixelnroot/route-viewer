@@ -4,6 +4,13 @@ export type TravelMode = 'driving' | 'walking' | 'cycling';
 export type RouteStatus = 'draft' | 'active' | 'archived';
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
+export interface Category {
+  id: string;
+  name: string;
+  color: string;
+  description?: string;
+}
+
 export interface RoutePoint {
   id: string;
   label: string;
@@ -25,6 +32,7 @@ export interface RouteMeta {
   status: RouteStatus;
   risk_level: RiskLevel;
   travel_mode: TravelMode;
+  category_id?: string;
 }
 
 export interface SavedRoute extends RouteMeta {

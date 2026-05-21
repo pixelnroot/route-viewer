@@ -1,94 +1,166 @@
 'use client';
 
-import { useState } from 'react';
-import { Menu, ChevronRight, ChevronLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Image from 'next/image';
-import RouteSidebar from '@/components/sidebar/RouteSidebar';
-import RouteBuilder from '@/components/routes/RouteBuilder';
-import RouteDetailPanel from '@/components/routes/RouteDetailPanel';
+import { Lock, MapPin } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useAuthStore } from '@/lib/store/auth-store';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
+import RouteDetailPanel from '@/components/routes/RouteDetailPanel';
+import { cn } from '@/lib/utils';
 
-// MapView must be client-side only — MapLibre/deck.gl need browser APIs
 const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false });
 
-export default function Home() {
-  const { mode, selectedRouteId } = useRouteBuilderStore();
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+// ── Auth gate ─────────────────────────────────────────────────────────────────
 
-  const showRightPanel = mode === 'create' || (mode === 'view' && selectedRouteId);
+function AuthGate() {
+  const { setViewKey } = useAuthStore();
+  const [key, setKey] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!key.trim()) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/routes', {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (res.ok) {
+        setViewKey(key.trim());
+      } else {
+        setError('Invalid key. Try again.');
+      }
+    } catch {
+      setError('Connection error.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="flex h-full w-full overflow-hidden relative">
-      {/* Left Sidebar */}
-      {leftOpen ? (
-        <div className="relative h-full z-10">
-          <RouteSidebar />
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="absolute top-4 -right-4 z-20 w-8 h-8 rounded-full shadow-md border"
-            onClick={() => setLeftOpen(false)}
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
+    <div className="h-full w-full flex items-center justify-center bg-background">
+      <div className="w-full max-w-sm px-6 space-y-8">
+        <div className="text-center space-y-3">
+          <div className="flex items-center justify-center w-14 h-14 rounded-full bg-primary/10 mx-auto">
+            <Lock className="w-6 h-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Field Route Intelligence</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Enter your view key to access the map.
+            </p>
+          </div>
         </div>
-      ) : (
-        <Button 
-          variant="secondary" 
-          size="icon" 
-          className="absolute top-4 left-4 z-20 w-10 h-10 shadow-md border rounded-md"
-          onClick={() => setLeftOpen(true)}
-        >
-          <Menu className="w-5 h-5" />
-        </Button>
-      )}
 
-      {/* Map — fills remaining space */}
-      <div className="flex-1 relative">
-        <MapView />
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <Input
+            type="password"
+            placeholder="View Key"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            className="h-11 text-base"
+            autoFocus
+          />
+          {error && <p className="text-sm text-destructive text-center">{error}</p>}
+          <Button
+            type="submit"
+            className="w-full h-11 text-base"
+            disabled={loading || !key.trim()}
+          >
+            {loading ? 'Verifying…' : 'Access Map'}
+          </Button>
+        </form>
       </div>
+    </div>
+  );
+}
 
-      {/* Right panel */}
-      {rightOpen && (
-        <div className="relative h-full z-10">
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="absolute top-4 -left-4 z-20 w-8 h-8 rounded-full shadow-md border"
-            onClick={() => setRightOpen(false)}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-          {mode === 'create' && <RouteBuilder />}
-          {mode === 'view' && selectedRouteId && <RouteDetailPanel />}
-          {mode === 'view' && !selectedRouteId && (
-            <div className="flex flex-col items-center justify-center h-full bg-background border-l border-border w-80 text-center p-6">
-              <div className="w-24 h-24 mb-6 rounded-full bg-primary/10 flex items-center justify-center">
-                <Image src="/globe.svg" alt="Logo" width={48} height={48} className="opacity-80 dark:invert" />
-              </div>
-              <h2 className="text-lg font-semibold mb-2">Field Route Intelligence</h2>
-              <p className="text-sm text-muted-foreground">
-                Select a route from the sidebar to view its details, or create a new route.
-              </p>
-            </div>
+// ── Category filter overlay ───────────────────────────────────────────────────
+
+function CategoryFilter() {
+  const { categories, categoryFilter, setCategoryFilter } = useRouteBuilderStore();
+  if (categories.length === 0) return null;
+
+  return (
+    <div className="absolute top-4 left-4 z-10 bg-background/90 backdrop-blur-sm rounded-xl border shadow-md px-3 py-2 flex flex-wrap gap-1.5 max-w-xs">
+      <button
+        onClick={() => setCategoryFilter(null)}
+        className={cn(
+          'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
+          !categoryFilter
+            ? 'bg-primary text-primary-foreground border-primary'
+            : 'border-border text-muted-foreground hover:bg-accent'
+        )}
+      >
+        All
+      </button>
+      {categories.map((cat) => (
+        <button
+          key={cat.id}
+          onClick={() => setCategoryFilter(categoryFilter === cat.id ? null : cat.id)}
+          className={cn(
+            'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
+            categoryFilter === cat.id
+              ? 'text-white border-transparent'
+              : 'border-border text-muted-foreground hover:bg-accent'
           )}
-        </div>
-      )}
-
-      {/* Toggle button when right panel is collapsed */}
-      {!rightOpen && (
-        <Button 
-          variant="secondary" 
-          size="icon" 
-          className="absolute top-4 right-4 z-20 w-10 h-10 shadow-md border rounded-md"
-          onClick={() => setRightOpen(true)}
+          style={categoryFilter === cat.id ? { backgroundColor: cat.color } : {}}
         >
-          <Menu className="w-5 h-5" />
-        </Button>
+          {cat.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Data loader ───────────────────────────────────────────────────────────────
+
+function DataLoader() {
+  const { viewKey, clearKeys } = useAuthStore();
+  const { setSavedRoutes, setCategories } = useRouteBuilderStore();
+
+  useEffect(() => {
+    if (!viewKey) return;
+    const headers = { Authorization: `Bearer ${viewKey}` };
+
+    fetch('/api/routes', { headers })
+      .then((r) => {
+        if (r.status === 401) { clearKeys(); return null; }
+        return r.json();
+      })
+      .then((data) => { if (Array.isArray(data)) setSavedRoutes(data); })
+      .catch(() => {});
+
+    fetch('/api/categories', { headers })
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => { if (Array.isArray(data)) setCategories(data); })
+      .catch(() => {});
+  }, [viewKey, setSavedRoutes, setCategories, clearKeys]);
+
+  return null;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+export default function Home() {
+  const { viewKey } = useAuthStore();
+  const { selectedRouteId } = useRouteBuilderStore();
+
+  if (!viewKey) return <AuthGate />;
+
+  return (
+    <div className="relative h-full w-full overflow-hidden">
+      <DataLoader />
+      <MapView />
+      <CategoryFilter />
+      {selectedRouteId && (
+        <div className="absolute right-0 top-0 h-full z-10 shadow-2xl">
+          <RouteDetailPanel />
+        </div>
       )}
     </div>
   );
