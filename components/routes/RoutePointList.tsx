@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -16,7 +16,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { GripVertical, Trash2, ChevronDown, ChevronUp, ImagePlus, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,6 +30,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
+import { useAuthStore } from '@/lib/store/auth-store';
 import type { RoutePoint, PointType } from '@/types/routes';
 
 const CATEGORY_ICONS: Record<string, string[]> = {
@@ -54,12 +55,43 @@ const TYPE_LABELS: Record<PointType, string> = {
   destination: 'D',
 };
 
-function SortablePoint({ point }: { point: RoutePoint }) {
+function SortablePoint({ point, isLast }: { point: RoutePoint; isLast: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: point.id });
 
   const { updatePoint, removePoint } = useRouteBuilderStore();
-  const [expanded, setExpanded] = useState(false);
+  const { editKey } = useAuthStore();
+  const [expanded, setExpanded] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${editKey}` },
+        body: form,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `Upload failed: ${res.status}`);
+      }
+      const { url } = await res.json();
+      updatePoint(point.id, { imageUrl: url });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -199,22 +231,89 @@ function SortablePoint({ point }: { point: RoutePoint }) {
                 </div>
               </div>
 
-              <Input
-                value={point.imageUrl ?? ''}
-                onChange={(e) => updatePoint(point.id, { imageUrl: e.target.value })}
-                className="h-7 text-xs"
-                placeholder="Image URL"
-              />
             </div>
           )}
 
-          <div className="mt-2">
+          {/* Segment routing mode (hidden for last point — no next segment) */}
+          {!isLast && (
+            <div className="space-y-1 mt-2 pt-2 border-t border-border">
+              <p className="text-[10px] text-muted-foreground font-medium">To next point:</p>
+              <div className="grid grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  onClick={() => updatePoint(point.id, { segmentMode: 'auto' })}
+                  className={cn(
+                    'h-7 text-[10px] font-medium rounded border transition-colors',
+                    (!point.segmentMode || point.segmentMode === 'auto')
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-muted-foreground hover:bg-accent/50'
+                  )}
+                >
+                  ↷ Auto Route
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updatePoint(point.id, { segmentMode: 'direct' })}
+                  className={cn(
+                    'h-7 text-[10px] font-medium rounded border transition-colors',
+                    point.segmentMode === 'direct'
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'border-border text-muted-foreground hover:bg-accent/50'
+                  )}
+                >
+                  — Direct Line
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5 mt-2 pt-2 border-t border-border">
             <Textarea
               value={point.note ?? ''}
               onChange={(e) => updatePoint(point.id, { note: e.target.value })}
               className="text-xs min-h-[48px] resize-none"
-              placeholder={point.type === 'poi' ? "Description..." : "Note (optional)"}
+              placeholder="Note (optional)"
             />
+
+            {/* Image upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            {point.imageUrl ? (
+              <div className="relative">
+                <img
+                  src={point.imageUrl}
+                  alt="Point image"
+                  className="w-full h-28 object-cover rounded-md border border-border"
+                />
+                <button
+                  type="button"
+                  onClick={() => updatePoint(point.id, { imageUrl: undefined })}
+                  className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5"
+                  aria-label="Remove image"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="w-full h-16 border border-dashed border-border rounded-md flex flex-col items-center justify-center gap-1 text-muted-foreground hover:bg-accent/30 transition-colors disabled:opacity-50"
+              >
+                {uploading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /><span className="text-[10px]">Uploading…</span></>
+                ) : (
+                  <><ImagePlus className="w-4 h-4" /><span className="text-[10px]">Upload image</span></>
+                )}
+              </button>
+            )}
+            {uploadError && <p className="text-[10px] text-destructive">{uploadError}</p>}
           </div>
         </div>
       )}
@@ -259,8 +358,8 @@ export default function RoutePointList() {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={points.map((p) => p.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1.5">
-            {points.map((p) => (
-              <SortablePoint key={p.id} point={p} />
+            {points.map((p, idx) => (
+              <SortablePoint key={p.id} point={p} isLast={idx === points.length - 1} />
             ))}
           </div>
         </SortableContext>

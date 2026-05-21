@@ -5,20 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
-import type { PointType, RiskLevel, RouteStatus } from '@/types/routes';
-
-const RISK_VARIANTS: Record<RiskLevel, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  low: 'secondary',
-  medium: 'outline',
-  high: 'destructive',
-  critical: 'destructive',
-};
-
-const STATUS_VARIANTS: Record<RouteStatus, 'default' | 'secondary' | 'outline'> = {
-  draft: 'outline',
-  active: 'default',
-  archived: 'secondary',
-};
+import type { PointType } from '@/types/routes';
 
 const POINT_TYPE_COLORS: Record<PointType, string> = {
   start: 'bg-green-500',
@@ -59,11 +46,8 @@ export default function RouteDetailPanel() {
       <ScrollArea className="flex-1 min-h-0 overflow-hidden">
         <div className="p-4 space-y-4">
           {/* Badges */}
-          <div className="flex flex-wrap gap-1.5">
-            <Badge variant={STATUS_VARIANTS[route.status]}>{route.status}</Badge>
-            <Badge variant={RISK_VARIANTS[route.risk_level]}>{route.risk_level} risk</Badge>
-            <Badge variant="outline">{route.travel_mode}</Badge>
-            {category && (
+          {category && (
+            <div className="flex flex-wrap gap-1.5">
               <Badge
                 variant="outline"
                 className="font-medium"
@@ -71,8 +55,8 @@ export default function RouteDetailPanel() {
               >
                 {category.name}
               </Badge>
-            )}
-          </div>
+            </div>
+          )}
 
           {route.description && (
             <p className="text-sm text-muted-foreground">{route.description}</p>

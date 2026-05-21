@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - deployment
 
 jobs:
   build-and-release:
@@ -29,6 +29,10 @@ jobs:
         env:
           NODE_ENV: production
 
+      - name: Generate version
+        id: version
+        run: echo "tag=build-$(date +'%Y%m%d-%H%M%S')-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
       - name: Package standalone bundle
         run: |
           mkdir -p _release
@@ -37,35 +41,33 @@ jobs:
           cp -r .next/static         _release/.next/static
           cp -r public               _release/public
           cp ecosystem.config.cjs    _release/
-          cp .env.example            _release/
-          tar -czf field-data-${{ github.ref_name }}.tar.gz -C _release .
+          cp .env.example            _release/ 2>/dev/null || true
+          tar -czf field-data-${{ steps.version.outputs.tag }}.tar.gz -C _release .
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          files: field-data-${{ github.ref_name }}.tar.gz
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: false
+          files: field-data-${{ steps.version.outputs.tag }}.tar.gz
           body: |
-            ## Deploy on any server with Node 22 + PM2 + nginx
+            Built from `deployment` branch — commit `${{ github.sha }}`
+
+            ## Deploy
 
             ```bash
-            # 1. extract release to your deploy directory
             mkdir -p /srv/field-data
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/field-data-${{ github.ref_name }}.tar.gz \
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/field-data-${{ steps.version.outputs.tag }}.tar.gz \
               | tar xz -C /srv/field-data
 
-            # 2. set your keys
             cd /srv/field-data
-            cp .env.example .env
-            nano .env   # fill in VIEW_ADMIN_KEY and EDIT_ADMIN_KEY
+            cp .env.example .env && nano .env   # set VIEW_ADMIN_KEY and EDIT_ADMIN_KEY
 
-            # 3. start with PM2
             pm2 start ecosystem.config.cjs
-            pm2 save
-            pm2 startup   # follow printed command to enable on boot
+            pm2 save && pm2 startup
 
-            # 4. link nginx config and reload
-            sudo ln -s /srv/field-data/nginx.conf /etc/nginx/sites-enabled/field-data
+            sudo ln -s /srv/field-data/nginx/nginx.conf /etc/nginx/sites-enabled/field-data
             sudo nginx -t && sudo systemctl reload nginx
             ```
 

@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -42,3 +43,7 @@ next-env.d.ts
 
 # local data store (swap for PostGIS later)
 /data/routes.json
+
+# uploaded images (runtime)
+/public/uploads/*
+!/public/uploads/.gitkeep

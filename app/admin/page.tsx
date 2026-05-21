@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
   Plus, Trash2, ChevronDown, ChevronUp, Tag,
-  LogOut, Shield, Route, Loader2, AlertCircle,
+  LogOut, Shield, Route, Loader2, AlertCircle, Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,18 +15,11 @@ import RouteBuilder from '@/components/routes/RouteBuilder';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { cn } from '@/lib/utils';
-import type { SavedRoute, RiskLevel, Category } from '@/types/routes';
+import type { SavedRoute, Category } from '@/types/routes';
 
 const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false });
 
 // ── constants ─────────────────────────────────────────────────────────────────
-
-const RISK_COLORS: Record<RiskLevel, string> = {
-  low: 'text-green-500',
-  medium: 'text-yellow-500',
-  high: 'text-orange-500',
-  critical: 'text-red-500',
-};
 
 const PRESET_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e',
@@ -36,13 +29,14 @@ const PRESET_COLORS = [
 // ── Admin gate ────────────────────────────────────────────────────────────────
 
 function AdminGate({ onAuth }: { onAuth: (key: string) => void }) {
-  const [key, setKey] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!key.trim()) return;
+    const key = (inputRef.current?.value ?? '').trim();
+    if (!key) { setError('Enter your admin key.'); return; }
     setLoading(true);
     setError('');
     try {
@@ -50,7 +44,7 @@ function AdminGate({ onAuth }: { onAuth: (key: string) => void }) {
         headers: { Authorization: `Bearer ${key}` },
       });
       if (res.ok) {
-        onAuth(key.trim());
+        onAuth(key);
       } else {
         setError('Invalid admin key.');
       }
@@ -75,15 +69,14 @@ function AdminGate({ onAuth }: { onAuth: (key: string) => void }) {
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           <Input
+            ref={inputRef}
             type="password"
             placeholder="Edit / Admin Key"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
             className="h-11 text-base"
             autoFocus
           />
           {error && <p className="text-sm text-destructive text-center">{error}</p>}
-          <Button type="submit" className="w-full h-11" disabled={loading || !key.trim()}>
+          <Button type="submit" className="w-full h-11" disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             {loading ? 'Verifying…' : 'Enter Admin Panel'}
           </Button>
@@ -132,11 +125,7 @@ function RouteCard({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium truncate">{route.name}</p>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className={cn('text-[10px] font-medium', RISK_COLORS[route.risk_level])}>
-                {route.risk_level}
-              </span>
-              <span className="text-[10px] text-muted-foreground">· {route.travel_mode}</span>
-              <span className="text-[10px] text-muted-foreground">· {route.points.length} pts</span>
+              <span className="text-[10px] text-muted-foreground">{route.points.length} pts</span>
               {category && (
                 <span
                   className="text-[10px] font-medium px-1 rounded"
@@ -147,12 +136,6 @@ function RouteCard({
               )}
             </div>
           </div>
-          <Badge
-            variant={route.status === 'active' ? 'default' : 'outline'}
-            className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0"
-          >
-            {route.status}
-          </Badge>
         </div>
       </button>
 
@@ -427,7 +410,7 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
 // ── Admin route detail (read + delete) ────────────────────────────────────────
 
 function AdminRouteDetail({ editKey }: { editKey: string }) {
-  const { selectedRouteId, savedRoutes, categories, selectRoute, removeSavedRoute } =
+  const { selectedRouteId, savedRoutes, categories, selectRoute, removeSavedRoute, loadRouteForEdit } =
     useRouteBuilderStore();
   const route = savedRoutes.find((r) => r.id === selectedRouteId);
   if (!route) return null;
@@ -462,23 +445,29 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
           <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: route.color }} />
           <span className="font-semibold text-sm truncate">{route.name}</span>
         </div>
-        <button onClick={() => selectRoute(null)} className="text-muted-foreground hover:text-foreground ml-2">
-          ✕
-        </button>
+        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+          <button
+            onClick={() => loadRouteForEdit(route)}
+            className="text-muted-foreground hover:text-primary"
+            title="Edit route"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => selectRoute(null)} className="text-muted-foreground hover:text-foreground">
+            ✕
+          </button>
+        </div>
       </div>
 
       <ScrollArea className="flex-1 min-h-0 overflow-hidden">
         <div className="p-4 space-y-4">
-          <div className="flex flex-wrap gap-1.5">
-            <Badge variant={route.status === 'active' ? 'default' : 'outline'}>{route.status}</Badge>
-            <Badge variant="outline">{route.risk_level} risk</Badge>
-            <Badge variant="outline">{route.travel_mode}</Badge>
-            {category && (
+          {category && (
+            <div className="flex flex-wrap gap-1.5">
               <Badge variant="outline" style={{ borderColor: category.color, color: category.color }}>
                 {category.name}
               </Badge>
-            )}
-          </div>
+            </div>
+          )}
 
           {route.description && (
             <p className="text-sm text-muted-foreground">{route.description}</p>
@@ -573,7 +562,7 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
 
 export default function AdminPage() {
   const { editKey, setEditKey, clearKeys } = useAuthStore();
-  const { mode, selectedRouteId, resetBuilder, setMode } = useRouteBuilderStore();
+  const { mode, selectedRouteId, editingRouteId, resetBuilder, setMode } = useRouteBuilderStore();
 
   const handleAuth = (key: string) => setEditKey(key);
   const handleLogout = () => {
@@ -584,7 +573,9 @@ export default function AdminPage() {
 
   if (!editKey) return <AdminGate onAuth={handleAuth} />;
 
-  const showRight = mode === 'create' || (mode === 'view' && selectedRouteId);
+  const showBuilder = mode === 'create';
+  const showDetail = mode === 'view' && !!selectedRouteId && !editingRouteId;
+  const showRight = showBuilder || showDetail;
 
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -596,8 +587,8 @@ export default function AdminPage() {
 
       {showRight && (
         <div className="h-full flex-shrink-0">
-          {mode === 'create' && <RouteBuilder />}
-          {mode === 'view' && selectedRouteId && <AdminRouteDetail editKey={editKey} />}
+          {showBuilder && <RouteBuilder />}
+          {showDetail && <AdminRouteDetail editKey={editKey} />}
         </div>
       )}
     </div>

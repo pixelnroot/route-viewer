@@ -26,6 +26,18 @@ interface RouteBuilderState {
   savedRoutes: SavedRoute[];
   selectedRouteId: string | null;
 
+  // edit mode
+  editingRouteId: string | null;
+  loadRouteForEdit: (route: SavedRoute) => void;
+
+  // map fly-to trigger
+  pendingFlyTo: { lat: number; lng: number } | null;
+  flyTo: (lat: number, lng: number) => void;
+  clearFlyTo: () => void;
+
+  // fallback flag
+  routeIsFallback: boolean;
+
   // categories
   categories: Category[];
   categoryFilter: string | null;
@@ -53,7 +65,8 @@ interface RouteBuilderState {
   setGeneratedGeometry: (
     geometry: GeoJSON.LineString | null,
     distance?: number,
-    duration?: number
+    duration?: number,
+    isFallback?: boolean,
   ) => void;
   setIsGenerating: (v: boolean) => void;
   setGenerateError: (err: string | null) => void;
@@ -97,11 +110,39 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       generateError: null,
       savedRoutes: [],
       selectedRouteId: null,
+      editingRouteId: null,
       categories: [],
       categoryFilter: null,
+      pendingFlyTo: null,
+      routeIsFallback: false,
 
       setMode: (mode) => set({ mode }),
       setBuilderTool: (tool) => set({ builderTool: tool }),
+
+      flyTo: (lat, lng) => set({ pendingFlyTo: { lat, lng } }),
+      clearFlyTo: () => set({ pendingFlyTo: null }),
+
+      loadRouteForEdit: (route) =>
+        set({
+          mode: 'create',
+          editingRouteId: route.id,
+          points: route.points,
+          meta: {
+            name: route.name,
+            description: route.description,
+            color: route.color,
+            status: route.status,
+            risk_level: route.risk_level,
+            travel_mode: route.travel_mode,
+            category_id: route.category_id,
+          },
+          generatedGeometry: route.geometry ?? null,
+          generatedDistance: null,
+          generatedDuration: null,
+          routeIsFallback: false,
+          generateError: null,
+          builderTool: 'draw_path',
+        }),
 
       addPoint: (point) =>
         set((s) => {
@@ -160,11 +201,12 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       setMeta: (patch) =>
         set((s) => ({ meta: { ...s.meta, ...patch } })),
 
-      setGeneratedGeometry: (geometry, distance, duration) =>
+      setGeneratedGeometry: (geometry, distance, duration, isFallback) =>
         set({
           generatedGeometry: geometry,
           generatedDistance: distance ?? null,
           generatedDuration: duration ?? null,
+          routeIsFallback: isFallback ?? false,
         }),
 
       setIsGenerating: (v) => set({ isGenerating: v }),
@@ -204,6 +246,9 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
           isGenerating: false,
           generateError: null,
           builderTool: 'draw_path',
+          routeIsFallback: false,
+          pendingFlyTo: null,
+          editingRouteId: null,
         }),
     }),
     {

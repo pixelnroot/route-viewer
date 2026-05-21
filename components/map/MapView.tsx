@@ -1,37 +1,19 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import maplibregl, { Map as MLMap, Marker, Popup } from 'maplibre-gl';
-import { MapboxOverlay } from '@deck.gl/mapbox';
-import { PathLayer } from '@deck.gl/layers';
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 import { Layers } from 'lucide-react';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { Button } from '@/components/ui/button';
 import type { PointType, RoutePoint } from '@/types/routes';
 
-const STREET_STYLE = 'https://tiles.openfreemap.org/styles/bright';
+// Called once at module level — avoids "setOptions called multiple times" warning in StrictMode
+setOptions({
+  key: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
+  v: 'weekly',
+});
 
-const SATELLITE_STYLE = {
-  version: 8,
-  sources: {
-    satellite: {
-      type: 'raster',
-      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-      tileSize: 256,
-    },
-  },
-  layers: [
-    {
-      id: 'satellite',
-      type: 'raster',
-      source: 'satellite',
-      minzoom: 0,
-      maxzoom: 22,
-    },
-  ],
-};
-
-const INITIAL_CENTER: [number, number] = [90.4125, 23.7937];
+const INITIAL_CENTER = { lat: 23.7937, lng: 90.4125 };
 const INITIAL_ZOOM = 12;
 
 const POINT_COLORS: Record<PointType, string> = {
@@ -48,82 +30,67 @@ const POINT_LETTER: Record<PointType, string> = {
   destination: 'D',
 };
 
-function createMarkerEl(type: PointType, label: string, category?: string, icon?: string): HTMLElement {
-  const el = document.createElement('div');
+function createMarkerSvgUrl(type: PointType, label: string, category?: string, icon?: string): string {
+  const color = POINT_COLORS[type];
+  const isWaypoint = type === 'waypoint';
   const hasIcon = type === 'poi' && !!icon;
   const isDiamond = type === 'poi' && !hasIcon;
-  el.style.cssText = `
-    width: 32px; height: 32px;
-    border-radius: ${isDiamond ? '4px' : (type === 'poi' ? '6px' : '50%')};
-    background: ${hasIcon ? 'white' : POINT_COLORS[type]};
-    border: 2px solid ${hasIcon ? POINT_COLORS[type] : 'white'};
-    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-    display: flex; align-items: center; justify-content: center;
-    color: white; font-weight: 700; font-size: ${hasIcon ? '18px' : '11px'};
-    cursor: pointer;
-    transform: ${isDiamond ? 'rotate(45deg)' : 'none'};
-    line-height: 1;
-  `;
-  const inner = document.createElement('span');
-  if (hasIcon) {
-    inner.textContent = icon!;
+  const size = isWaypoint ? 20 : 32;
+  const half = size / 2;
+  const r = half - 2;
+  const fontSize = hasIcon ? Math.floor(size * 0.55) : (isWaypoint ? 9 : 11);
+
+  let text = hasIcon
+    ? icon!
+    : (type === 'poi' && category ? category[0].toUpperCase() : label.charAt(0).toUpperCase() || POINT_LETTER[type]);
+
+  let shape: string;
+  if (isDiamond) {
+    const d = size - 8;
+    shape = `<rect x="${(size-d)/2}" y="${(size-d)/2}" width="${d}" height="${d}" rx="2" fill="${color}" stroke="white" stroke-width="2" transform="rotate(45,${half},${half})"/>`;
   } else {
-    let char = label.charAt(0).toUpperCase() || POINT_LETTER[type];
-    if (type === 'poi' && category) char = category.charAt(0).toUpperCase();
-    inner.textContent = char;
-    if (isDiamond) inner.style.transform = 'rotate(-45deg)';
+    shape = `<circle cx="${half}" cy="${half}" r="${r}" fill="${hasIcon ? 'white' : color}" stroke="${hasIcon ? color : 'white'}" stroke-width="2"/>`;
   }
-  el.appendChild(inner);
-  return el;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><filter id="s"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.4"/></filter><g filter="url(#s)">${shape}</g><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" fill="${hasIcon ? '#333' : 'white'}" font-size="${fontSize}" font-weight="700" font-family="sans-serif">${text}</text></svg>`;
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function getPopupHTML(point: RoutePoint) {
-  return `
-    <div style="padding: 4px; max-width: 220px; font-family: sans-serif;">
-      <h3 style="font-weight: 600; font-size: 14px; margin: 0 0 4px 0;">${point.label}</h3>
-      ${point.category ? `<p style="font-size: 11px; color: #666; margin: 0 0 6px 0; text-transform: capitalize; font-weight: 500;">Type: ${point.category}</p>` : ''}
-      ${point.imageUrl ? `<img src="${point.imageUrl}" alt="${point.label}" style="width: 100%; height: auto; border-radius: 4px; margin-bottom: 8px; object-fit: cover;" />` : ''}
-      ${point.note ? `<p style="font-size: 12px; line-height: 1.4; margin: 0; color: #333;">${point.note}</p>` : ''}
-    </div>
-  `;
+function getPopupHTML(point: RoutePoint): string {
+  return `<div style="padding:4px;max-width:240px;font-family:sans-serif;">
+    <h3 style="font-weight:600;font-size:13px;margin:0 0 6px 0;">${point.label}</h3>
+    ${point.imageUrl ? `<img src="${point.imageUrl}" alt="${point.label}" style="width:100%;height:auto;border-radius:6px;margin-bottom:6px;object-fit:cover;display:block;"/>` : ''}
+    ${point.note ? `<p style="font-size:12px;line-height:1.5;margin:0;color:#444;">${point.note}</p>` : ''}
+  </div>`;
 }
 
-interface PathData {
-  routeId: string;
-  path: [number, number][];
-  color: [number, number, number, number];
-  colorHighlight: [number, number, number, number];
-  width: number;
+function hasPopupContent(point: RoutePoint): boolean {
+  return !!(point.note || point.imageUrl);
 }
 
-function hexToRgba(hex: string, alpha = 220): [number, number, number, number] {
-  const h = hex.replace('#', '');
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-    alpha,
-  ];
-}
-
-type MapMode = 'street' | 'satellite';
+type MapType = 'roadmap' | 'satellite' | 'terrain';
 
 export default function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<MLMap | null>(null);
-  const overlayRef = useRef<MapboxOverlay | null>(null);
-  const markersRef = useRef<globalThis.Map<string, Marker>>(new globalThis.Map());
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const polylinesRef = useRef<globalThis.Map<string, google.maps.Polyline>>(new globalThis.Map());
+  const markersRef = useRef<globalThis.Map<string, google.maps.Marker>>(new globalThis.Map());
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const suppressClickRef = useRef(false);
 
-  const [mapMode, setMapMode] = useState<MapMode>('street');
+  const [mapType, setMapType] = useState<MapType>('roadmap');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
   const {
     mode,
     points: builderPoints,
-    builderTool,
     savedRoutes,
     selectedRouteId,
     categoryFilter,
+    pendingFlyTo,
+    generatedGeometry,
     selectRoute,
     addPointAtLatLng,
     updatePoint,
@@ -131,195 +98,202 @@ export default function MapView() {
 
   const activePoints = mode === 'create'
     ? builderPoints
-    : (selectedRouteId ? savedRoutes.find((r) => r.id === selectedRouteId)?.points ?? [] : []);
+    : savedRoutes.flatMap((r) => {
+        if (categoryFilter && r.category_id !== categoryFilter) return [];
+        return r.points ?? [];
+      });
 
-  // Init map + deck.gl overlay
+  // Load Google Maps and initialise
   useEffect(() => {
-    if (mapRef.current || !mapContainer.current) return;
+    importLibrary('maps').then(() => {
+      if (mapRef.current || !mapContainer.current) return;
 
-    const map = new MLMap({
-      container: mapContainer.current,
-      style: mapMode === 'street' ? STREET_STYLE : (SATELLITE_STYLE as any),
-      center: INITIAL_CENTER,
-      zoom: INITIAL_ZOOM,
-      attributionControl: { compact: true },
+      const map = new google.maps.Map(mapContainer.current, {
+        center: INITIAL_CENTER,
+        zoom: INITIAL_ZOOM,
+        mapTypeId: 'roadmap',
+        disableDefaultUI: false,
+        zoomControl: true,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: false,
+        clickableIcons: false,
+      });
+
+      infoWindowRef.current = new google.maps.InfoWindow();
+
+      map.addListener('click', (e: google.maps.MapMouseEvent) => {
+        if (suppressClickRef.current) return;
+        const { mode: m, addPointAtLatLng: add } = useRouteBuilderStore.getState();
+        if (m === 'create') {
+          add(e.latLng!.lat(), e.latLng!.lng());
+        } else {
+          useRouteBuilderStore.getState().selectRoute(null);
+          infoWindowRef.current?.close();
+        }
+      });
+
+      mapRef.current = map;
+      setMapReady(true);
     });
-
-    const overlay = new MapboxOverlay({ layers: [] });
-    map.on('load', () => map.addControl(overlay as never));
-
-    map.on('click', (e: maplibregl.MapMouseEvent) => {
-      const { mode: m, builderTool: t, addPointAtLatLng: add } = useRouteBuilderStore.getState();
-      if (m === 'create') {
-        add(e.lngLat.lat, e.lngLat.lng);
-      } else {
-        useRouteBuilderStore.getState().selectRoute(null);
-      }
-    });
-
-    mapRef.current = map;
-    overlayRef.current = overlay;
 
     return () => {
-      markersRef.current.forEach((m) => m.remove());
+      polylinesRef.current.forEach((p) => p.setMap(null));
+      polylinesRef.current.clear();
+      markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current.clear();
-      map.remove();
+      infoWindowRef.current?.close();
       mapRef.current = null;
-      overlayRef.current = null;
+      setMapReady(false);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Change style when mapMode changes
+  // Map type change
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.setStyle(mapMode === 'street' ? STREET_STYLE : (SATELLITE_STYLE as any));
-  }, [mapMode]);
+    mapRef.current?.setMapTypeId(mapType);
+  }, [mapType]);
 
   // Cursor in create mode
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.getCanvas().style.cursor = mode === 'create' ? 'crosshair' : '';
+    mapRef.current?.setOptions({ draggableCursor: mode === 'create' ? 'crosshair' : null });
   }, [mode]);
 
-  // Sync markers to selected route's POI/start/destination points
+  // Fly to coordinate
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !pendingFlyTo) return;
+    map.panTo({ lat: pendingFlyTo.lat, lng: pendingFlyTo.lng });
+    map.setZoom(15);
+    useRouteBuilderStore.getState().clearFlyTo();
+  }, [pendingFlyTo]);
 
-    const visiblePoints = activePoints.filter((p) => p.type !== 'waypoint');
-    const current = new Set(visiblePoints.map((p) => p.id));
+  // Update route polylines
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    // Remove old polylines
+    polylinesRef.current.forEach((p) => p.setMap(null));
+    polylinesRef.current.clear();
+
+    if (mode !== 'create') {
+      savedRoutes.forEach((route) => {
+        if (!route.geometry?.coordinates?.length) return;
+        if (categoryFilter && route.category_id !== categoryFilter) return;
+
+        const isSelected = route.id === selectedRouteId;
+        const path = (route.geometry.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
+
+        const polyline = new google.maps.Polyline({
+          path,
+          geodesic: true,
+          strokeColor: route.color,
+          strokeOpacity: isSelected ? 1.0 : 0.8,
+          strokeWeight: isSelected ? 7 : 4,
+          map,
+          zIndex: isSelected ? 10 : 1,
+          clickable: true,
+        });
+
+        polyline.addListener('click', () => {
+          suppressClickRef.current = true;
+          setTimeout(() => { suppressClickRef.current = false; }, 0);
+          useRouteBuilderStore.getState().selectRoute(route.id);
+          infoWindowRef.current?.close();
+        });
+
+        polyline.addListener('mouseover', () => {
+          if (useRouteBuilderStore.getState().mode !== 'create') {
+            map.setOptions({ draggableCursor: 'pointer' });
+          }
+        });
+        polyline.addListener('mouseout', () => {
+          const { mode: m } = useRouteBuilderStore.getState();
+          map.setOptions({ draggableCursor: m === 'create' ? 'crosshair' : null });
+        });
+
+        polylinesRef.current.set(route.id, polyline);
+      });
+    }
+
+    // Preview route (during create)
+    if (generatedGeometry?.coordinates?.length) {
+      const path = (generatedGeometry.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
+      const preview = new google.maps.Polyline({
+        path,
+        geodesic: true,
+        strokeColor: '#ff8c00',
+        strokeOpacity: 0.95,
+        strokeWeight: 5,
+        map,
+        zIndex: 20,
+        clickable: false,
+      });
+      polylinesRef.current.set('__preview__', preview);
+    }
+  }, [savedRoutes, selectedRouteId, categoryFilter, mode, generatedGeometry, mapReady]);
+
+  // Sync markers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const current = new Set(activePoints.map((p) => p.id));
 
     for (const [id, marker] of markersRef.current) {
       if (!current.has(id)) {
-        marker.remove();
+        marker.setMap(null);
         markersRef.current.delete(id);
       }
     }
 
-    for (const point of visiblePoints) {
+    for (const point of activePoints) {
       if (markersRef.current.has(point.id)) {
         const m = markersRef.current.get(point.id)!;
-        const ll = m.getLngLat();
-        if (Math.abs(ll.lat - point.lat) > 1e-7 || Math.abs(ll.lng - point.lng) > 1e-7) {
-          m.setLngLat([point.lng, point.lat]);
+        const pos = m.getPosition();
+        if (pos && (Math.abs(pos.lat() - point.lat) > 1e-7 || Math.abs(pos.lng() - point.lng) > 1e-7)) {
+          m.setPosition({ lat: point.lat, lng: point.lng });
         }
-        const newEl = createMarkerEl(point.type, point.label, point.category, point.icon);
-        const oldEl = m.getElement();
-        if (
-          oldEl.dataset.icon !== (point.icon ?? '') ||
-          oldEl.dataset.category !== (point.category ?? '') ||
-          oldEl.dataset.label !== point.label
-        ) {
-          newEl.dataset.icon = point.icon ?? '';
-          newEl.dataset.category = point.category ?? '';
-          newEl.dataset.label = point.label;
-          oldEl.replaceWith(newEl);
-        }
-        if (point.type === 'poi') {
-          const popup = m.getPopup();
-          if (popup) popup.setHTML(getPopupHTML(point));
-        }
+        // Update icon if label/icon/category changed
+        const size = point.type === 'waypoint' ? 20 : 32;
+        m.setIcon({
+          url: createMarkerSvgUrl(point.type, point.label, point.category, point.icon),
+          scaledSize: new google.maps.Size(size, size),
+          anchor: new google.maps.Point(size / 2, size / 2),
+        });
       } else {
-        const el = createMarkerEl(point.type, point.label, point.category, point.icon);
-        el.dataset.icon = point.icon ?? '';
-        el.dataset.category = point.category ?? '';
-        el.dataset.label = point.label;
-        const marker = new Marker({ element: el, draggable: mode === 'create' })
-          .setLngLat([point.lng, point.lat]);
-
-        if (point.type === 'poi') {
-          marker.setPopup(
-            new Popup({ offset: 25, closeButton: false }).setHTML(getPopupHTML(point))
-          );
-        }
-
-        marker.on('dragend', () => {
-          if (mode !== 'create') return;
-          const { lat, lng } = marker.getLngLat();
-          updatePoint(point.id, { lat, lng });
+        const size = point.type === 'waypoint' ? 20 : 32;
+        const marker = new google.maps.Marker({
+          position: { lat: point.lat, lng: point.lng },
+          map,
+          icon: {
+            url: createMarkerSvgUrl(point.type, point.label, point.category, point.icon),
+            scaledSize: new google.maps.Size(size, size),
+            anchor: new google.maps.Point(size / 2, size / 2),
+          },
+          draggable: mode === 'create',
+          zIndex: 100,
         });
 
-        marker.addTo(map);
+        marker.addListener('click', () => {
+          suppressClickRef.current = true;
+          setTimeout(() => { suppressClickRef.current = false; }, 0);
+          if (hasPopupContent(point)) {
+            infoWindowRef.current!.setContent(getPopupHTML(point));
+            infoWindowRef.current!.open({ map, anchor: marker });
+          }
+        });
+
+        marker.addListener('dragend', () => {
+          if (useRouteBuilderStore.getState().mode !== 'create') return;
+          const pos = marker.getPosition()!;
+          updatePoint(point.id, { lat: pos.lat(), lng: pos.lng() });
+        });
+
         markersRef.current.set(point.id, marker);
       }
     }
-  }, [activePoints, mode, updatePoint]);
-
-  // Update deck.gl layers
-  useEffect(() => {
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-
-    const layers = [];
-
-    // Saved routes (hidden in create mode to reduce clutter)
-    if (mode !== 'create') {
-      const routesToShow = savedRoutes.filter((r) => {
-        if (!r.geometry?.coordinates?.length) return false;
-        if (categoryFilter && r.category_id !== categoryFilter) return false;
-        return true;
-      });
-
-      const savedData: PathData[] = routesToShow.map((r) => ({
-        routeId: r.id,
-        path: r.geometry!.coordinates as [number, number][],
-        color: r.id === selectedRouteId ? hexToRgba(r.color, 255) : hexToRgba(r.color, 200),
-        colorHighlight: hexToRgba(r.color, 255),
-        width: r.id === selectedRouteId ? 7 : 4,
-      }));
-
-      if (savedData.length) {
-        layers.push(
-          new PathLayer<PathData>({
-            id: 'saved-routes',
-            data: savedData,
-            getPath: (d) => d.path,
-            getColor: (d) => d.color,
-            getWidth: (d) => d.width,
-            widthUnits: 'pixels',
-            widthMinPixels: 2,
-            jointRounded: true,
-            capRounded: true,
-            pickable: true,
-            autoHighlight: true,
-            highlightColor: [255, 255, 255, 80],
-            onClick: (info) => {
-              if (info.object) selectRoute((info.object as PathData).routeId);
-            },
-          })
-        );
-      }
-    }
-
-    // In-progress preview geometry
-    const { generatedGeometry } = useRouteBuilderStore.getState();
-    if (generatedGeometry?.coordinates?.length) {
-      layers.push(
-        new PathLayer<PathData>({
-          id: 'preview-route',
-          data: [{
-            routeId: '__preview__',
-            path: generatedGeometry.coordinates as [number, number][],
-            color: [255, 140, 0, 240],
-            colorHighlight: [255, 140, 0, 255],
-            width: 5,
-          }],
-          getPath: (d) => d.path,
-          getColor: (d) => d.color,
-          getWidth: (d) => d.width,
-          widthUnits: 'pixels',
-          widthMinPixels: 3,
-          jointRounded: true,
-          capRounded: true,
-          pickable: false,
-        })
-      );
-    }
-
-    overlay.setProps({ layers });
-  }, [savedRoutes, selectedRouteId, categoryFilter, mode, selectRoute]);
+  }, [activePoints, mode, mapReady, updatePoint]);
 
   // Zoom to selected route
   useEffect(() => {
@@ -327,35 +301,28 @@ export default function MapView() {
     if (!map || !selectedRouteId) return;
     const route = savedRoutes.find((r) => r.id === selectedRouteId);
     if (!route?.geometry?.coordinates?.length) return;
-    const coords = route.geometry.coordinates as [number, number][];
-    const lngs = coords.map((c) => c[0]);
-    const lats = coords.map((c) => c[1]);
-    map.fitBounds(
-      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 120, duration: 800 }
-    );
+    const bounds = new google.maps.LatLngBounds();
+    (route.geometry.coordinates as [number, number][]).forEach(([lng, lat]) => bounds.extend({ lat, lng }));
+    map.fitBounds(bounds, { top: 120, right: 60, bottom: 60, left: 60 });
   }, [selectedRouteId, savedRoutes]);
 
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
 
-      {/* Map style toggle */}
+      {/* Map type toggle */}
       <div className="absolute bottom-6 right-6 z-10 flex flex-col items-end gap-2">
         {menuOpen && (
-          <div className="bg-background border rounded-md shadow-lg p-1 min-w-[120px] flex flex-col gap-1">
-            <button
-              className={`text-sm px-3 py-1.5 rounded-sm text-left ${mapMode === 'street' ? 'bg-accent font-medium' : 'hover:bg-accent/50'}`}
-              onClick={() => { setMapMode('street'); setMenuOpen(false); }}
-            >
-              Street
-            </button>
-            <button
-              className={`text-sm px-3 py-1.5 rounded-sm text-left ${mapMode === 'satellite' ? 'bg-accent font-medium' : 'hover:bg-accent/50'}`}
-              onClick={() => { setMapMode('satellite'); setMenuOpen(false); }}
-            >
-              Satellite
-            </button>
+          <div className="bg-background border rounded-md shadow-lg p-1 min-w-[130px] flex flex-col gap-1">
+            {(['roadmap', 'satellite', 'terrain'] as MapType[]).map((t) => (
+              <button
+                key={t}
+                className={`text-sm px-3 py-1.5 rounded-sm text-left capitalize ${mapType === t ? 'bg-accent font-medium' : 'hover:bg-accent/50'}`}
+                onClick={() => { setMapType(t); setMenuOpen(false); }}
+              >
+                {t === 'roadmap' ? 'Street' : t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
           </div>
         )}
         <Button

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Lock, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,13 +16,14 @@ const MapView = dynamic(() => import('@/components/map/MapView'), { ssr: false }
 
 function AuthGate() {
   const { setViewKey } = useAuthStore();
-  const [key, setKey] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!key.trim()) return;
+    const key = (inputRef.current?.value ?? '').trim();
+    if (!key) { setError('Enter your view key.'); return; }
     setLoading(true);
     setError('');
     try {
@@ -30,7 +31,7 @@ function AuthGate() {
         headers: { Authorization: `Bearer ${key}` },
       });
       if (res.ok) {
-        setViewKey(key.trim());
+        setViewKey(key);
       } else {
         setError('Invalid key. Try again.');
       }
@@ -58,10 +59,9 @@ function AuthGate() {
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <Input
+            ref={inputRef}
             type="password"
             placeholder="View Key"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
             className="h-11 text-base"
             autoFocus
           />
@@ -69,7 +69,7 @@ function AuthGate() {
           <Button
             type="submit"
             className="w-full h-11 text-base"
-            disabled={loading || !key.trim()}
+            disabled={loading}
           >
             {loading ? 'Verifying…' : 'Access Map'}
           </Button>

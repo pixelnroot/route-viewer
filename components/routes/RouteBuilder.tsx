@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Route, Loader2, Save, AlertCircle, MapPin, MousePointer2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { X, Route, Loader2, Save, AlertCircle, MapPin, Plus, Navigation, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,8 +19,19 @@ import RoutePointList from './RoutePointList';
 import RouteColorPicker from './RouteColorPicker';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { fetchOSRMRoute, formatDistance, formatDuration } from '@/lib/routing/osrm';
-import type { RouteStatus, RiskLevel, TravelMode } from '@/types/routes';
+import { fetchRouteGoogle } from '@/lib/routing/google-directions';
+import { haversineDistance, formatDistance, formatDuration } from '@/lib/routing/osrm';
+import type { TravelMode } from '@/types/routes';
+
+function parseCoord(input: string): { lat: number; lng: number } | null {
+  const parts = input.trim().split(/[\s,]+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  const lat = parseFloat(parts[0]);
+  const lng = parseFloat(parts[1]);
+  if (isNaN(lat) || isNaN(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
 
 export default function RouteBuilder() {
   const {
@@ -32,6 +43,8 @@ export default function RouteBuilder() {
     generatedDuration,
     isGenerating,
     generateError,
+    routeIsFallback,
+    editingRouteId,
     categories,
     setMeta,
     setMode,
@@ -40,24 +53,56 @@ export default function RouteBuilder() {
     setIsGenerating,
     setGenerateError,
     addSavedRoute,
+    updateSavedRoute,
+    selectRoute,
     resetBuilder,
+    addPointAtLatLng,
+    flyTo,
   } = useRouteBuilderStore();
 
   const { editKey, setEditKey } = useAuthStore();
 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [coordInput, setCoordInput] = useState('');
+  const [coordError, setCoordError] = useState<string | null>(null);
+
+  const parsedCoord = useMemo(() => parseCoord(coordInput), [coordInput]);
+
+  // Straight-line distance between first and last non-POI point
+  const startEndDistance = useMemo(() => {
+    const pathPts = [...points].sort((a, b) => a.order - b.order);
+    if (pathPts.length < 2) return null;
+    const first = pathPts[0];
+    const last = pathPts[pathPts.length - 1];
+    return haversineDistance(first.lat, first.lng, last.lat, last.lng);
+  }, [points]);
 
   const canGenerate = points.length >= 2;
   const canSave = generatedGeometry !== null && meta.name?.trim();
+
+  const handleFlyToCoord = () => {
+    if (!parsedCoord) { setCoordError('Invalid coordinates'); return; }
+    setCoordError(null);
+    flyTo(parsedCoord.lat, parsedCoord.lng);
+  };
+
+  const handleAddCoord = () => {
+    if (!parsedCoord) { setCoordError('Invalid coordinates'); return; }
+    setCoordError(null);
+    addPointAtLatLng(parsedCoord.lat, parsedCoord.lng);
+    flyTo(parsedCoord.lat, parsedCoord.lng);
+    setCoordInput('');
+  };
 
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setIsGenerating(true);
     setGenerateError(null);
     try {
-      const result = await fetchOSRMRoute(points, meta.travel_mode ?? 'driving');
-      setGeneratedGeometry(result.geometry, result.distance, result.duration);
+      const result = await fetchRouteGoogle(points, meta.travel_mode ?? 'driving');
+      setGeneratedGeometry(result.geometry, result.distance, result.duration, result.isFallback);
+      if (!result.isFallback) setGenerateError(null);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : 'Route generation failed');
     } finally {
@@ -77,14 +122,20 @@ export default function RouteBuilder() {
         status: meta.status ?? 'draft',
         risk_level: meta.risk_level ?? 'low',
         travel_mode: meta.travel_mode ?? 'driving',
+        category_id: meta.category_id,
         points,
         geometry: generatedGeometry,
       };
-      const res = await fetch('/api/routes', {
-        method: 'POST',
-        headers: { 
+
+      const isEdit = !!editingRouteId;
+      const url = isEdit ? `/api/routes/${editingRouteId}` : '/api/routes';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${editKey}`
+          'Authorization': `Bearer ${editKey}`,
         },
         body: JSON.stringify(body),
       });
@@ -94,7 +145,13 @@ export default function RouteBuilder() {
       }
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       const saved = await res.json();
-      addSavedRoute(saved);
+
+      if (isEdit) {
+        updateSavedRoute(saved);
+        selectRoute(saved.id);
+      } else {
+        addSavedRoute(saved);
+      }
       resetBuilder();
       setMode('view');
     } catch (err) {
@@ -109,11 +166,15 @@ export default function RouteBuilder() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Route className="w-4 h-4 text-primary" />
-          <span className="font-semibold text-sm">Create Route</span>
+          {editingRouteId ? <Pencil className="w-4 h-4 text-primary" /> : <Route className="w-4 h-4 text-primary" />}
+          <span className="font-semibold text-sm">{editingRouteId ? 'Edit Route' : 'Create Route'}</span>
         </div>
         <button
-          onClick={() => { resetBuilder(); setMode('view'); }}
+          onClick={() => {
+            resetBuilder();
+            setMode('view');
+            if (editingRouteId) selectRoute(editingRouteId);
+          }}
           className="text-muted-foreground hover:text-foreground"
           aria-label="Close"
         >
@@ -152,11 +213,58 @@ export default function RouteBuilder() {
 
           <Separator />
 
+          {/* Coordinate search */}
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Add by Coordinate
+            </p>
+            <div className="flex gap-1">
+              <Input
+                value={coordInput}
+                onChange={(e) => { setCoordInput(e.target.value); setCoordError(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddCoord(); }}
+                placeholder="lat, lng — e.g. 23.79, 90.41"
+                className="h-8 text-xs flex-1"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0 flex-shrink-0"
+                onClick={handleFlyToCoord}
+                disabled={!parsedCoord}
+                title="Fly to coordinate"
+              >
+                <Navigation className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 w-8 p-0 flex-shrink-0"
+                onClick={handleAddCoord}
+                disabled={!parsedCoord}
+                title="Add as route point"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+            {coordError && (
+              <p className="text-xs text-destructive">{coordError}</p>
+            )}
+          </section>
+
+          <Separator />
+
           {/* Points */}
           <section>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-              Route Points ({points.length})
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Route Points ({points.length})
+              </p>
+              {startEndDistance !== null && (
+                <span className="text-xs text-muted-foreground bg-muted/50 rounded px-1.5 py-0.5">
+                  ↔ {formatDistance(startEndDistance)}
+                </span>
+              )}
+            </div>
             <RoutePointList />
           </section>
 
@@ -186,60 +294,6 @@ export default function RouteBuilder() {
                 placeholder="Optional description"
                 className="text-sm min-h-[60px] resize-none"
               />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Status</Label>
-                <Select
-                  value={meta.status ?? 'draft'}
-                  onValueChange={(v) => setMeta({ status: v as RouteStatus })}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Risk Level</Label>
-                <Select
-                  value={meta.risk_level ?? 'low'}
-                  onValueChange={(v) => setMeta({ risk_level: v as RiskLevel })}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="critical">Critical</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">Travel Mode</Label>
-              <Select
-                value={meta.travel_mode ?? 'driving'}
-                onValueChange={(v) => setMeta({ travel_mode: v as TravelMode })}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="driving">Driving</SelectItem>
-                  <SelectItem value="walking">Walking</SelectItem>
-                  <SelectItem value="cycling">Cycling</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             {categories.length > 0 && (
@@ -282,15 +336,20 @@ export default function RouteBuilder() {
           {generatedGeometry && (
             <section className="bg-muted/50 rounded-md p-3 space-y-1">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Generated Route
+                {routeIsFallback ? 'Straight-line Route' : 'Generated Route'}
               </p>
+              {routeIsFallback && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  No road found — connected with straight lines
+                </p>
+              )}
               {generatedDistance != null && (
                 <p className="text-sm">
                   <span className="text-muted-foreground">Distance: </span>
                   {formatDistance(generatedDistance)}
                 </p>
               )}
-              {generatedDuration != null && (
+              {!routeIsFallback && generatedDuration != null && generatedDuration > 0 && (
                 <p className="text-sm">
                   <span className="text-muted-foreground">Duration: </span>
                   {formatDuration(generatedDuration)}
@@ -344,12 +403,12 @@ export default function RouteBuilder() {
           {isSaving ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Saving…
+              {editingRouteId ? 'Updating…' : 'Saving…'}
             </>
           ) : (
             <>
               <Save className="w-4 h-4 mr-2" />
-              Save Route
+              {editingRouteId ? 'Update Route' : 'Save Route'}
             </>
           )}
         </Button>

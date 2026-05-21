@@ -129,3 +129,11 @@
     @apply font-sans;
   }
 }
+
+/* Ensure markers and popups render above deck.gl canvas */
+.maplibregl-map .maplibregl-markers {
+  z-index: 3;
+}
+.maplibregl-map .maplibregl-popup {
+  z-index: 4;
+}
