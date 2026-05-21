@@ -1,6 +1,45 @@
 import type { RoutePoint, TravelMode } from '@/types/routes';
 import type { RoutingResult } from './types';
 
+export function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function buildStraightLineRoute(points: RoutePoint[]): RoutingResult {
+  const sorted = [...points].sort((a, b) => a.order - b.order);
+  const coordinates = sorted.map((p): [number, number] => [p.lng, p.lat]);
+  let totalDistance = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    totalDistance += haversineDistance(
+      sorted[i - 1].lat, sorted[i - 1].lng,
+      sorted[i].lat, sorted[i].lng
+    );
+  }
+  return { geometry: { type: 'LineString', coordinates }, distance: totalDistance, duration: 0 };
+}
+
+export interface RouteWithFallback extends RoutingResult {
+  isFallback: boolean;
+}
+
+export async function fetchRouteWithFallback(
+  points: RoutePoint[],
+  mode: TravelMode = 'driving'
+): Promise<RouteWithFallback> {
+  try {
+    const result = await fetchOSRMRoute(points, mode);
+    return { ...result, isFallback: false };
+  } catch {
+    return { ...buildStraightLineRoute(points), isFallback: true };
+  }
+}
+
 const OSRM_BASE = 'https://router.project-osrm.org/route/v1';
 
 // OSRM only supports driving natively via the public demo server

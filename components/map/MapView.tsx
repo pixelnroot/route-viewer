@@ -124,6 +124,7 @@ export default function MapView() {
     savedRoutes,
     selectedRouteId,
     categoryFilter,
+    pendingFlyTo,
     selectRoute,
     addPointAtLatLng,
     updatePoint,
@@ -175,6 +176,14 @@ export default function MapView() {
     if (!map) return;
     map.setStyle(mapMode === 'street' ? STREET_STYLE : (SATELLITE_STYLE as any));
   }, [mapMode]);
+
+  // Fly to coordinate when triggered from RouteBuilder
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !pendingFlyTo) return;
+    map.flyTo({ center: [pendingFlyTo.lng, pendingFlyTo.lat], zoom: 15, duration: 800 });
+    useRouteBuilderStore.getState().clearFlyTo();
+  }, [pendingFlyTo]);
 
   // Cursor in create mode
   useEffect(() => {

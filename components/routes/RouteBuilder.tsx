@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Route, Loader2, Save, AlertCircle, MapPin, MousePointer2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { X, Route, Loader2, Save, AlertCircle, MapPin, Plus, Navigation } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,8 +19,18 @@ import RoutePointList from './RoutePointList';
 import RouteColorPicker from './RouteColorPicker';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { fetchOSRMRoute, formatDistance, formatDuration } from '@/lib/routing/osrm';
+import { fetchRouteWithFallback, haversineDistance, formatDistance, formatDuration } from '@/lib/routing/osrm';
 import type { RouteStatus, RiskLevel, TravelMode } from '@/types/routes';
+
+function parseCoord(input: string): { lat: number; lng: number } | null {
+  const parts = input.trim().split(/[\s,]+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  const lat = parseFloat(parts[0]);
+  const lng = parseFloat(parts[1]);
+  if (isNaN(lat) || isNaN(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
 
 export default function RouteBuilder() {
   const {
@@ -32,6 +42,7 @@ export default function RouteBuilder() {
     generatedDuration,
     isGenerating,
     generateError,
+    routeIsFallback,
     categories,
     setMeta,
     setMode,
@@ -41,23 +52,55 @@ export default function RouteBuilder() {
     setGenerateError,
     addSavedRoute,
     resetBuilder,
+    addPointAtLatLng,
+    flyTo,
   } = useRouteBuilderStore();
 
   const { editKey, setEditKey } = useAuthStore();
 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [coordInput, setCoordInput] = useState('');
+  const [coordError, setCoordError] = useState<string | null>(null);
 
-  const canGenerate = points.length >= 2;
+  const parsedCoord = useMemo(() => parseCoord(coordInput), [coordInput]);
+
+  // Straight-line distance between first and last non-POI point
+  const startEndDistance = useMemo(() => {
+    const pathPts = [...points]
+      .filter((p) => p.type !== 'poi')
+      .sort((a, b) => a.order - b.order);
+    if (pathPts.length < 2) return null;
+    const first = pathPts[0];
+    const last = pathPts[pathPts.length - 1];
+    return haversineDistance(first.lat, first.lng, last.lat, last.lng);
+  }, [points]);
+
+  const canGenerate = points.filter((p) => p.type !== 'poi').length >= 2;
   const canSave = generatedGeometry !== null && meta.name?.trim();
+
+  const handleFlyToCoord = () => {
+    if (!parsedCoord) { setCoordError('Invalid coordinates'); return; }
+    setCoordError(null);
+    flyTo(parsedCoord.lat, parsedCoord.lng);
+  };
+
+  const handleAddCoord = () => {
+    if (!parsedCoord) { setCoordError('Invalid coordinates'); return; }
+    setCoordError(null);
+    addPointAtLatLng(parsedCoord.lat, parsedCoord.lng);
+    flyTo(parsedCoord.lat, parsedCoord.lng);
+    setCoordInput('');
+  };
 
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setIsGenerating(true);
     setGenerateError(null);
     try {
-      const result = await fetchOSRMRoute(points, meta.travel_mode ?? 'driving');
-      setGeneratedGeometry(result.geometry, result.distance, result.duration);
+      const result = await fetchRouteWithFallback(points, meta.travel_mode ?? 'driving');
+      setGeneratedGeometry(result.geometry, result.distance, result.duration, result.isFallback);
+      if (!result.isFallback) setGenerateError(null);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : 'Route generation failed');
     } finally {
@@ -152,11 +195,58 @@ export default function RouteBuilder() {
 
           <Separator />
 
+          {/* Coordinate search */}
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Add by Coordinate
+            </p>
+            <div className="flex gap-1">
+              <Input
+                value={coordInput}
+                onChange={(e) => { setCoordInput(e.target.value); setCoordError(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddCoord(); }}
+                placeholder="lat, lng — e.g. 23.79, 90.41"
+                className="h-8 text-xs flex-1"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 w-8 p-0 flex-shrink-0"
+                onClick={handleFlyToCoord}
+                disabled={!parsedCoord}
+                title="Fly to coordinate"
+              >
+                <Navigation className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 w-8 p-0 flex-shrink-0"
+                onClick={handleAddCoord}
+                disabled={!parsedCoord}
+                title="Add as route point"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+            {coordError && (
+              <p className="text-xs text-destructive">{coordError}</p>
+            )}
+          </section>
+
+          <Separator />
+
           {/* Points */}
           <section>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-              Route Points ({points.length})
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Route Points ({points.length})
+              </p>
+              {startEndDistance !== null && (
+                <span className="text-xs text-muted-foreground bg-muted/50 rounded px-1.5 py-0.5">
+                  ↔ {formatDistance(startEndDistance)}
+                </span>
+              )}
+            </div>
             <RoutePointList />
           </section>
 
@@ -282,15 +372,20 @@ export default function RouteBuilder() {
           {generatedGeometry && (
             <section className="bg-muted/50 rounded-md p-3 space-y-1">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Generated Route
+                {routeIsFallback ? 'Straight-line Route' : 'Generated Route'}
               </p>
+              {routeIsFallback && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  No road found — connected with straight lines
+                </p>
+              )}
               {generatedDistance != null && (
                 <p className="text-sm">
                   <span className="text-muted-foreground">Distance: </span>
                   {formatDistance(generatedDistance)}
                 </p>
               )}
-              {generatedDuration != null && (
+              {!routeIsFallback && generatedDuration != null && generatedDuration > 0 && (
                 <p className="text-sm">
                   <span className="text-muted-foreground">Duration: </span>
                   {formatDuration(generatedDuration)}

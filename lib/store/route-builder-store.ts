@@ -26,6 +26,14 @@ interface RouteBuilderState {
   savedRoutes: SavedRoute[];
   selectedRouteId: string | null;
 
+  // map fly-to trigger
+  pendingFlyTo: { lat: number; lng: number } | null;
+  flyTo: (lat: number, lng: number) => void;
+  clearFlyTo: () => void;
+
+  // fallback flag
+  routeIsFallback: boolean;
+
   // categories
   categories: Category[];
   categoryFilter: string | null;
@@ -53,7 +61,8 @@ interface RouteBuilderState {
   setGeneratedGeometry: (
     geometry: GeoJSON.LineString | null,
     distance?: number,
-    duration?: number
+    duration?: number,
+    isFallback?: boolean,
   ) => void;
   setIsGenerating: (v: boolean) => void;
   setGenerateError: (err: string | null) => void;
@@ -99,9 +108,14 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       selectedRouteId: null,
       categories: [],
       categoryFilter: null,
+      pendingFlyTo: null,
+      routeIsFallback: false,
 
       setMode: (mode) => set({ mode }),
       setBuilderTool: (tool) => set({ builderTool: tool }),
+
+      flyTo: (lat, lng) => set({ pendingFlyTo: { lat, lng } }),
+      clearFlyTo: () => set({ pendingFlyTo: null }),
 
       addPoint: (point) =>
         set((s) => {
@@ -160,11 +174,12 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       setMeta: (patch) =>
         set((s) => ({ meta: { ...s.meta, ...patch } })),
 
-      setGeneratedGeometry: (geometry, distance, duration) =>
+      setGeneratedGeometry: (geometry, distance, duration, isFallback) =>
         set({
           generatedGeometry: geometry,
           generatedDistance: distance ?? null,
           generatedDuration: duration ?? null,
+          routeIsFallback: isFallback ?? false,
         }),
 
       setIsGenerating: (v) => set({ isGenerating: v }),
@@ -204,6 +219,8 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
           isGenerating: false,
           generateError: null,
           builderTool: 'draw_path',
+          routeIsFallback: false,
+          pendingFlyTo: null,
         }),
     }),
     {
