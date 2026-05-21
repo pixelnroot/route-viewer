@@ -22,6 +22,7 @@ export interface RoutePoint {
   imageUrl?: string;
   icon?: string;
   order: number;
+  segmentMode?: 'auto' | 'direct'; // routing from this point TO the next
 }
 
 

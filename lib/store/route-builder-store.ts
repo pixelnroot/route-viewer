@@ -26,6 +26,10 @@ interface RouteBuilderState {
   savedRoutes: SavedRoute[];
   selectedRouteId: string | null;
 
+  // edit mode
+  editingRouteId: string | null;
+  loadRouteForEdit: (route: SavedRoute) => void;
+
   // map fly-to trigger
   pendingFlyTo: { lat: number; lng: number } | null;
   flyTo: (lat: number, lng: number) => void;
@@ -106,6 +110,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       generateError: null,
       savedRoutes: [],
       selectedRouteId: null,
+      editingRouteId: null,
       categories: [],
       categoryFilter: null,
       pendingFlyTo: null,
@@ -116,6 +121,28 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
 
       flyTo: (lat, lng) => set({ pendingFlyTo: { lat, lng } }),
       clearFlyTo: () => set({ pendingFlyTo: null }),
+
+      loadRouteForEdit: (route) =>
+        set({
+          mode: 'create',
+          editingRouteId: route.id,
+          points: route.points,
+          meta: {
+            name: route.name,
+            description: route.description,
+            color: route.color,
+            status: route.status,
+            risk_level: route.risk_level,
+            travel_mode: route.travel_mode,
+            category_id: route.category_id,
+          },
+          generatedGeometry: route.geometry ?? null,
+          generatedDistance: null,
+          generatedDuration: null,
+          routeIsFallback: false,
+          generateError: null,
+          builderTool: 'draw_path',
+        }),
 
       addPoint: (point) =>
         set((s) => {
@@ -221,6 +248,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
           builderTool: 'draw_path',
           routeIsFallback: false,
           pendingFlyTo: null,
+          editingRouteId: null,
         }),
     }),
     {

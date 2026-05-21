@@ -43,3 +43,7 @@ next-env.d.ts
 
 # local data store (swap for PostGIS later)
 /data/routes.json
+
+# uploaded images (runtime)
+/public/uploads/*
+!/public/uploads/.gitkeep

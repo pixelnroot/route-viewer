@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { X, Route, Loader2, Save, AlertCircle, MapPin, Plus, Navigation } from 'lucide-react';
+import { X, Route, Loader2, Save, AlertCircle, MapPin, Plus, Navigation, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,8 +19,9 @@ import RoutePointList from './RoutePointList';
 import RouteColorPicker from './RouteColorPicker';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { fetchRouteWithFallback, haversineDistance, formatDistance, formatDuration } from '@/lib/routing/osrm';
-import type { RouteStatus, RiskLevel, TravelMode } from '@/types/routes';
+import { fetchRouteGoogle } from '@/lib/routing/google-directions';
+import { haversineDistance, formatDistance, formatDuration } from '@/lib/routing/osrm';
+import type { TravelMode } from '@/types/routes';
 
 function parseCoord(input: string): { lat: number; lng: number } | null {
   const parts = input.trim().split(/[\s,]+/).filter(Boolean);
@@ -43,6 +44,7 @@ export default function RouteBuilder() {
     isGenerating,
     generateError,
     routeIsFallback,
+    editingRouteId,
     categories,
     setMeta,
     setMode,
@@ -51,6 +53,8 @@ export default function RouteBuilder() {
     setIsGenerating,
     setGenerateError,
     addSavedRoute,
+    updateSavedRoute,
+    selectRoute,
     resetBuilder,
     addPointAtLatLng,
     flyTo,
@@ -67,16 +71,14 @@ export default function RouteBuilder() {
 
   // Straight-line distance between first and last non-POI point
   const startEndDistance = useMemo(() => {
-    const pathPts = [...points]
-      .filter((p) => p.type !== 'poi')
-      .sort((a, b) => a.order - b.order);
+    const pathPts = [...points].sort((a, b) => a.order - b.order);
     if (pathPts.length < 2) return null;
     const first = pathPts[0];
     const last = pathPts[pathPts.length - 1];
     return haversineDistance(first.lat, first.lng, last.lat, last.lng);
   }, [points]);
 
-  const canGenerate = points.filter((p) => p.type !== 'poi').length >= 2;
+  const canGenerate = points.length >= 2;
   const canSave = generatedGeometry !== null && meta.name?.trim();
 
   const handleFlyToCoord = () => {
@@ -98,7 +100,7 @@ export default function RouteBuilder() {
     setIsGenerating(true);
     setGenerateError(null);
     try {
-      const result = await fetchRouteWithFallback(points, meta.travel_mode ?? 'driving');
+      const result = await fetchRouteGoogle(points, meta.travel_mode ?? 'driving');
       setGeneratedGeometry(result.geometry, result.distance, result.duration, result.isFallback);
       if (!result.isFallback) setGenerateError(null);
     } catch (err) {
@@ -120,14 +122,20 @@ export default function RouteBuilder() {
         status: meta.status ?? 'draft',
         risk_level: meta.risk_level ?? 'low',
         travel_mode: meta.travel_mode ?? 'driving',
+        category_id: meta.category_id,
         points,
         geometry: generatedGeometry,
       };
-      const res = await fetch('/api/routes', {
-        method: 'POST',
-        headers: { 
+
+      const isEdit = !!editingRouteId;
+      const url = isEdit ? `/api/routes/${editingRouteId}` : '/api/routes';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${editKey}`
+          'Authorization': `Bearer ${editKey}`,
         },
         body: JSON.stringify(body),
       });
@@ -137,7 +145,13 @@ export default function RouteBuilder() {
       }
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
       const saved = await res.json();
-      addSavedRoute(saved);
+
+      if (isEdit) {
+        updateSavedRoute(saved);
+        selectRoute(saved.id);
+      } else {
+        addSavedRoute(saved);
+      }
       resetBuilder();
       setMode('view');
     } catch (err) {
@@ -152,11 +166,15 @@ export default function RouteBuilder() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Route className="w-4 h-4 text-primary" />
-          <span className="font-semibold text-sm">Create Route</span>
+          {editingRouteId ? <Pencil className="w-4 h-4 text-primary" /> : <Route className="w-4 h-4 text-primary" />}
+          <span className="font-semibold text-sm">{editingRouteId ? 'Edit Route' : 'Create Route'}</span>
         </div>
         <button
-          onClick={() => { resetBuilder(); setMode('view'); }}
+          onClick={() => {
+            resetBuilder();
+            setMode('view');
+            if (editingRouteId) selectRoute(editingRouteId);
+          }}
           className="text-muted-foreground hover:text-foreground"
           aria-label="Close"
         >
@@ -278,60 +296,6 @@ export default function RouteBuilder() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Status</Label>
-                <Select
-                  value={meta.status ?? 'draft'}
-                  onValueChange={(v) => setMeta({ status: v as RouteStatus })}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Risk Level</Label>
-                <Select
-                  value={meta.risk_level ?? 'low'}
-                  onValueChange={(v) => setMeta({ risk_level: v as RiskLevel })}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="critical">Critical</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">Travel Mode</Label>
-              <Select
-                value={meta.travel_mode ?? 'driving'}
-                onValueChange={(v) => setMeta({ travel_mode: v as TravelMode })}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="driving">Driving</SelectItem>
-                  <SelectItem value="walking">Walking</SelectItem>
-                  <SelectItem value="cycling">Cycling</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
             {categories.length > 0 && (
               <div className="space-y-1">
                 <Label className="text-xs">Category</Label>
@@ -439,12 +403,12 @@ export default function RouteBuilder() {
           {isSaving ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Saving…
+              {editingRouteId ? 'Updating…' : 'Saving…'}
             </>
           ) : (
             <>
               <Save className="w-4 h-4 mr-2" />
-              Save Route
+              {editingRouteId ? 'Update Route' : 'Save Route'}
             </>
           )}
         </Button>
