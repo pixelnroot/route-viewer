@@ -30,42 +30,43 @@ const POINT_LETTER: Record<PointType, string> = {
   destination: 'D',
 };
 
-// Teardrop pin: circle head + pointed tail. w=32, h=44
-function createPinPng(color: string, label: string): string {
-  const w = 32, h = 44, r = 14, cx = 16, cy = 16;
+// Classic Google Maps-style location pin: large circle head + teardrop tail + white hole
+function createLocationPin(color: string, W = 32, H = 48): string {
   const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d')!;
+  const cx = W / 2;
+  const r = W / 2 - 1;   // head circle radius
+  const cy = r + 1;       // head circle center y
+
   // Drop shadow
-  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowColor = 'rgba(0,0,0,0.4)';
   ctx.shadowBlur = 5;
   ctx.shadowOffsetY = 3;
-  // Pin shape: circle + triangular tail
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, (Math.PI * 2) / 3, Math.PI / 3, true); // bottom arc opening
-  ctx.lineTo(cx, h - 2); // tip
-  ctx.closePath();
   ctx.fillStyle = color;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // White inner circle for contrast
-  ctx.shadowColor = 'transparent';
+
+  // Teardrop path:
+  // Arc anticlockwise from 210° to 330° sweeps over the top (240° arc = the head)
+  // Then straight lines down to the tip, then closePath back
   ctx.beginPath();
-  ctx.arc(cx, cy, r * 0.52, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.arc(cx, cy, r, (7 * Math.PI) / 6, (11 * Math.PI) / 6, true); // 210°→330° anticlockwise = top
+  ctx.lineTo(cx, H - 2);   // right side line to tip
+  ctx.closePath();          // closes: tip back to 210° point (left side)
   ctx.fill();
-  // Label
+
+  // White inner hole circle
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.42, 0, Math.PI * 2);
   ctx.fillStyle = 'white';
-  ctx.font = `900 13px Arial`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, cx, cy);
+  ctx.fill();
+
   return canvas.toDataURL('image/png');
 }
 
-// Small circle for waypoints
+// Small filled circle for waypoints
 function createCirclePng(color: string, label: string, size: number): string {
   const canvas = document.createElement('canvas');
   canvas.width = size; canvas.height = size;
@@ -90,65 +91,30 @@ function createCirclePng(color: string, label: string, size: number): string {
   return canvas.toDataURL('image/png');
 }
 
-// Diamond for POI/checkpost
-function createDiamondPng(color: string, label: string): string {
-  const size = 36;
-  const canvas = document.createElement('canvas');
-  canvas.width = size; canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const h = size / 2;
-  ctx.shadowColor = 'rgba(0,0,0,0.3)';
-  ctx.shadowBlur = 4;
-  ctx.shadowOffsetY = 2;
-  ctx.beginPath();
-  ctx.moveTo(h, 3); // top
-  ctx.lineTo(size - 3, h); // right
-  ctx.lineTo(h, size - 3); // bottom
-  ctx.lineTo(3, h); // left
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.strokeStyle = 'white';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.shadowColor = 'transparent';
-  ctx.fillStyle = 'white';
-  ctx.font = `900 12px Arial`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, h, h);
-  return canvas.toDataURL('image/png');
-}
-
 function getMarkerIcon(type: PointType, _size: number): google.maps.Icon {
   if (type === 'waypoint') {
-    const s = 24;
+    const s = 22;
     return {
       url: createCirclePng(POINT_COLORS[type], POINT_LETTER[type], s),
       scaledSize: new google.maps.Size(s, s),
       anchor: new google.maps.Point(s / 2, s / 2),
     };
   }
-  if (type === 'poi') {
-    return {
-      url: createDiamondPng(POINT_COLORS[type], POINT_LETTER[type]),
-      scaledSize: new google.maps.Size(36, 36),
-      anchor: new google.maps.Point(18, 18),
-    };
-  }
-  // start / destination: teardrop pin
+  // start, destination, poi — all use location pin (different colors)
+  const W = type === 'poi' ? 26 : 32;
+  const H = type === 'poi' ? 38 : 48;
   return {
-    url: createPinPng(POINT_COLORS[type], POINT_LETTER[type]),
-    scaledSize: new google.maps.Size(32, 44),
-    anchor: new google.maps.Point(16, 42), // anchor at tip
+    url: createLocationPin(POINT_COLORS[type], W, H),
+    scaledSize: new google.maps.Size(W, H),
+    anchor: new google.maps.Point(W / 2, H - 2), // anchored at tip
   };
 }
 
 function getPinIcon(color: string): google.maps.Icon {
   return {
-    url: createPinPng(color, '*'),
-    scaledSize: new google.maps.Size(32, 44),
-    anchor: new google.maps.Point(16, 42),
+    url: createLocationPin(color, 32, 48),
+    scaledSize: new google.maps.Size(32, 48),
+    anchor: new google.maps.Point(16, 46),
   };
 }
 
