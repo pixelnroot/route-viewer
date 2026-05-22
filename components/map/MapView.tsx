@@ -30,39 +30,126 @@ const POINT_LETTER: Record<PointType, string> = {
   destination: 'D',
 };
 
-function createMarkerPng(color: string, label: string, size: number): string {
+// Teardrop pin: circle head + pointed tail. w=32, h=44
+function createPinPng(color: string, label: string): string {
+  const w = 32, h = 44, r = 14, cx = 16, cy = 16;
   const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d')!;
-  const half = size / 2;
-  // Circle
+  // Drop shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 5;
+  ctx.shadowOffsetY = 3;
+  // Pin shape: circle + triangular tail
   ctx.beginPath();
-  ctx.arc(half, half, half - 2, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r, (Math.PI * 2) / 3, Math.PI / 3, true); // bottom arc opening
+  ctx.lineTo(cx, h - 2); // tip
+  ctx.closePath();
   ctx.fillStyle = color;
   ctx.fill();
-  ctx.strokeStyle = 'white';
-  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 2;
   ctx.stroke();
+  // White inner circle for contrast
+  ctx.shadowColor = 'transparent';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.52, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fill();
   // Label
   ctx.fillStyle = 'white';
-  ctx.font = `800 ${Math.floor(size * 0.38)}px Arial`;
+  ctx.font = `900 13px Arial`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, half, half);
+  ctx.fillText(label, cx, cy);
   return canvas.toDataURL('image/png');
 }
 
-function getMarkerIcon(type: PointType, size: number): google.maps.Icon {
-  const url = createMarkerPng(POINT_COLORS[type], POINT_LETTER[type], size);
+// Small circle for waypoints
+function createCirclePng(color: string, label: string, size: number): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
   const h = size / 2;
-  return { url, scaledSize: new google.maps.Size(size, size), anchor: new google.maps.Point(h, h) };
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 3;
+  ctx.shadowOffsetY = 1;
+  ctx.beginPath();
+  ctx.arc(h, h, h - 2, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = 'white';
+  ctx.font = `900 ${Math.floor(size * 0.42)}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, h, h);
+  return canvas.toDataURL('image/png');
 }
 
-function getPinIcon(color: string, size: number): google.maps.Icon {
-  const url = createMarkerPng(color, '+', size);
+// Diamond for POI/checkpost
+function createDiamondPng(color: string, label: string): string {
+  const size = 36;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
   const h = size / 2;
-  return { url, scaledSize: new google.maps.Size(size, size), anchor: new google.maps.Point(h, h) };
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 2;
+  ctx.beginPath();
+  ctx.moveTo(h, 3); // top
+  ctx.lineTo(size - 3, h); // right
+  ctx.lineTo(h, size - 3); // bottom
+  ctx.lineTo(3, h); // left
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = 'white';
+  ctx.font = `900 12px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, h, h);
+  return canvas.toDataURL('image/png');
+}
+
+function getMarkerIcon(type: PointType, _size: number): google.maps.Icon {
+  if (type === 'waypoint') {
+    const s = 24;
+    return {
+      url: createCirclePng(POINT_COLORS[type], POINT_LETTER[type], s),
+      scaledSize: new google.maps.Size(s, s),
+      anchor: new google.maps.Point(s / 2, s / 2),
+    };
+  }
+  if (type === 'poi') {
+    return {
+      url: createDiamondPng(POINT_COLORS[type], POINT_LETTER[type]),
+      scaledSize: new google.maps.Size(36, 36),
+      anchor: new google.maps.Point(18, 18),
+    };
+  }
+  // start / destination: teardrop pin
+  return {
+    url: createPinPng(POINT_COLORS[type], POINT_LETTER[type]),
+    scaledSize: new google.maps.Size(32, 44),
+    anchor: new google.maps.Point(16, 42), // anchor at tip
+  };
+}
+
+function getPinIcon(color: string): google.maps.Icon {
+  return {
+    url: createPinPng(color, '*'),
+    scaledSize: new google.maps.Size(32, 44),
+    anchor: new google.maps.Point(16, 42),
+  };
 }
 
 function getPopupHTML(point: RoutePoint): string {
@@ -315,7 +402,7 @@ export default function MapView() {
       pinMarkerRef.current = new google.maps.Marker({
         position: { lat: clickedCoord.lat, lng: clickedCoord.lng },
         map,
-        icon: getPinIcon('#f97316', 38),
+        icon: getPinIcon('#f97316'),
         zIndex: 200,
         title: `${clickedCoord.lat.toFixed(6)}, ${clickedCoord.lng.toFixed(6)}`,
       });

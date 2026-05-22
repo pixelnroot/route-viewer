@@ -1,10 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
+import { cn } from '@/lib/utils';
 import type { PointType } from '@/types/routes';
 
 const POINT_TYPE_COLORS: Record<PointType, string> = {
@@ -16,11 +18,14 @@ const POINT_TYPE_COLORS: Record<PointType, string> = {
 
 export default function RouteDetailPanel() {
   const { selectedRouteId, savedRoutes, categories, selectRoute } = useRouteBuilderStore();
+  const [showCheckpost, setShowCheckpost] = useState(true);
 
   const route = savedRoutes.find((r) => r.id === selectedRouteId);
   if (!route) return null;
 
-  const sorted = [...route.points].sort((a, b) => a.order - b.order);
+  const allSorted = [...route.points].sort((a, b) => a.order - b.order);
+  const hasCheckposts = allSorted.some(p => p.type === 'poi');
+  const sorted = showCheckpost ? allSorted : allSorted.filter(p => p.type !== 'poi');
   const category = route.category_id ? categories.find((c) => c.id === route.category_id) : null;
 
   return (
@@ -42,6 +47,34 @@ export default function RouteDetailPanel() {
           <X className="w-5 h-5" />
         </button>
       </div>
+
+      {/* Checkpost filter */}
+      {hasCheckposts && (
+        <div className="px-4 py-2 border-b border-border flex-shrink-0 flex gap-1.5">
+          <button
+            onClick={() => setShowCheckpost(true)}
+            className={cn(
+              'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
+              showCheckpost
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'border-border text-muted-foreground hover:bg-accent'
+            )}
+          >
+            With Checkpost
+          </button>
+          <button
+            onClick={() => setShowCheckpost(false)}
+            className={cn(
+              'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
+              !showCheckpost
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'border-border text-muted-foreground hover:bg-accent'
+            )}
+          >
+            Without Checkpost
+          </button>
+        </div>
+      )}
 
       <ScrollArea className="flex-1 min-h-0 overflow-hidden">
         <div className="p-4 space-y-4">
@@ -67,7 +100,7 @@ export default function RouteDetailPanel() {
           {/* Points */}
           <section>
             <p className="text-sm font-bold text-foreground uppercase tracking-wider mb-3">
-              Route Points ({sorted.length})
+              Route Points ({sorted.length}{!showCheckpost && hasCheckposts ? ` of ${allSorted.length}` : ''})
             </p>
             <div className="space-y-4">
               {sorted.map((pt, i) => (

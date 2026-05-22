@@ -143,14 +143,17 @@ function RouteSidebar() {
   } = useRouteBuilderStore();
 
   const [collapsed, setCollapsed] = useState(false);
+  const [checkpostFilter, setCheckpostFilter] = useState<'all' | 'with' | 'without'>('all');
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
 
-  const filtered = useMemo(() =>
-    categoryFilter
+  const filtered = useMemo(() => {
+    let routes = categoryFilter
       ? savedRoutes.filter(r => r.category_id === categoryFilter)
-      : savedRoutes,
-    [savedRoutes, categoryFilter]
-  );
+      : savedRoutes;
+    if (checkpostFilter === 'with') routes = routes.filter(r => r.points.some(p => p.type === 'poi'));
+    if (checkpostFilter === 'without') routes = routes.filter(r => !r.points.some(p => p.type === 'poi'));
+    return routes;
+  }, [savedRoutes, categoryFilter, checkpostFilter]);
 
   if (collapsed) {
     return (
@@ -232,6 +235,26 @@ function RouteSidebar() {
           </div>
         </div>
       )}
+
+      {/* Checkpost filter */}
+      <div className="px-3 py-2 border-b border-border flex-shrink-0">
+        <div className="flex gap-1.5">
+          {(['all', 'with', 'without'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setCheckpostFilter(f)}
+              className={cn(
+                'text-xs px-2.5 py-1 rounded-full border font-medium transition-colors flex-1',
+                checkpostFilter === f
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'border-border text-muted-foreground hover:bg-accent'
+              )}
+            >
+              {f === 'all' ? 'All' : f === 'with' ? 'With Checkpost' : 'Without'}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Route list */}
       <ScrollArea className="flex-1 min-h-0">
