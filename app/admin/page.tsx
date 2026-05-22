@@ -440,12 +440,12 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
 
   return (
     <div className="flex flex-col h-full bg-background border-l border-border w-80">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: route.color }} />
-          <span className="font-semibold text-sm truncate">{route.name}</span>
+      <div className="flex items-start justify-between px-4 py-3 border-b border-border flex-shrink-0">
+        <div className="flex items-start gap-2 min-w-0 flex-1 mr-2">
+          <div className="w-3 h-3 rounded-full flex-shrink-0 mt-0.5" style={{ backgroundColor: route.color }} />
+          <span className="font-semibold text-sm leading-snug">{route.name}</span>
         </div>
-        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
             onClick={() => loadRouteForEdit(route)}
             className="text-muted-foreground hover:text-primary"

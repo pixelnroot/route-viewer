@@ -26,17 +26,17 @@ export default function RouteDetailPanel() {
   return (
     <div className="flex flex-col h-full bg-background border-l border-border w-96">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-start justify-between px-4 py-3 border-b border-border flex-shrink-0">
+        <div className="flex items-start gap-2 min-w-0 flex-1 mr-2">
           <div
-            className="w-3.5 h-3.5 rounded-full flex-shrink-0"
+            className="w-3.5 h-3.5 rounded-full flex-shrink-0 mt-1"
             style={{ backgroundColor: route.color }}
           />
-          <span className="font-bold text-base text-foreground truncate">{route.name}</span>
+          <span className="font-bold text-base text-foreground leading-snug">{route.name}</span>
         </div>
         <button
           onClick={() => selectRoute(null)}
-          className="text-foreground/60 hover:text-foreground flex-shrink-0 ml-2"
+          className="text-foreground/60 hover:text-foreground flex-shrink-0"
           aria-label="Close"
         >
           <X className="w-5 h-5" />
