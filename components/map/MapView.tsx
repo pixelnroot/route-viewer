@@ -30,33 +30,30 @@ const POINT_LETTER: Record<PointType, string> = {
   destination: 'D',
 };
 
-function createMarkerSvgUrl(type: PointType, order: number, category?: string, icon?: string): string {
+function createMarkerSvgUrl(type: PointType, order: number, _category?: string, icon?: string): string {
   const color = POINT_COLORS[type];
   const isWaypoint = type === 'waypoint';
   const hasIcon = type === 'poi' && !!icon;
   const isDiamond = type === 'poi' && !hasIcon;
-  // Bigger sizes so markers are clearly visible on map
-  const size = isWaypoint ? 26 : 36;
+  const size = isWaypoint ? 28 : 38;
   const half = size / 2;
   const r = half - 2;
-  const fontSize = hasIcon ? Math.floor(size * 0.5) : (isWaypoint ? 10 : 12);
+  const fontSize = isWaypoint ? 10 : 13;
 
-  // Always use ASCII: letter for type or sequential number — avoids Unicode/data-URI issues
-  const text = hasIcon
-    ? icon!
-    : (isDiamond ? POINT_LETTER[type] : (POINT_LETTER[type] + (isWaypoint ? String(order) : '')));
+  // ASCII-only label — btoa fails on non-ASCII
+  const label = hasIcon ? icon! : POINT_LETTER[type];
 
   let shape: string;
   if (isDiamond) {
-    const d = size - 8;
+    const d = size - 10;
     shape = `<rect x="${(size-d)/2}" y="${(size-d)/2}" width="${d}" height="${d}" rx="2" fill="${color}" stroke="white" stroke-width="2" transform="rotate(45,${half},${half})"/>`;
   } else {
-    shape = `<circle cx="${half}" cy="${half}" r="${r}" fill="${hasIcon ? 'white' : color}" stroke="${hasIcon ? color : 'white'}" stroke-width="2.5"/>`;
+    shape = `<circle cx="${half}" cy="${half}" r="${r}" fill="${color}" stroke="white" stroke-width="2.5"/>`;
   }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><filter id="sh"><feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.5"/></filter><g filter="url(#sh)">${shape}</g><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" fill="${hasIcon ? '#333' : 'white'}" font-size="${fontSize}" font-weight="800" font-family="Arial,sans-serif">${text}</text></svg>`;
-
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  // base64 is universally handled — encodeURIComponent sometimes fails in google maps context
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${shape}<text x="${half}" y="${half}" dy="0.35em" text-anchor="middle" fill="white" font-size="${fontSize}" font-weight="800" font-family="Arial,sans-serif">${label}</text></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
 }
 
 function getPopupHTML(point: RoutePoint): string {
