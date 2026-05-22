@@ -124,12 +124,15 @@ export default function MapView() {
 
       map.addListener('click', (e: google.maps.MapMouseEvent) => {
         if (suppressClickRef.current) return;
-        const { mode: m, addPointAtLatLng: add } = useRouteBuilderStore.getState();
+        const { mode: m, addPointAtLatLng: add, setClickedCoord } = useRouteBuilderStore.getState();
         if (m === 'create') {
           add(e.latLng!.lat(), e.latLng!.lng());
         } else {
           useRouteBuilderStore.getState().selectRoute(null);
           infoWindowRef.current?.close();
+          if (e.latLng) {
+            setClickedCoord({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+          }
         }
       });
 

@@ -420,6 +420,7 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [pointsExpanded, setPointsExpanded] = useState(true);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -476,10 +477,14 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
           <Separator />
 
           <section>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Points ({sorted.length})
-            </p>
-            <div className="space-y-2">
+            <button
+              onClick={() => setPointsExpanded(v => !v)}
+              className="flex items-center justify-between w-full text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
+            >
+              <span>Points ({sorted.length})</span>
+              {pointsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            {pointsExpanded && <div className="space-y-2">
               {sorted.map((pt, i) => (
                 <div key={pt.id} className="flex items-start gap-2">
                   <div className="flex flex-col items-center flex-shrink-0">
@@ -503,7 +508,7 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
                   </div>
                 </div>
               ))}
-            </div>
+            </div>}
           </section>
 
           <Separator />

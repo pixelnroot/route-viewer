@@ -35,6 +35,10 @@ interface RouteBuilderState {
   flyTo: (lat: number, lng: number) => void;
   clearFlyTo: () => void;
 
+  // map click location info (view mode)
+  clickedCoord: { lat: number; lng: number } | null;
+  setClickedCoord: (coord: { lat: number; lng: number } | null) => void;
+
   // fallback flag
   routeIsFallback: boolean;
 
@@ -115,12 +119,14 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       categoryFilter: null,
       pendingFlyTo: null,
       routeIsFallback: false,
+      clickedCoord: null,
 
       setMode: (mode) => set({ mode }),
       setBuilderTool: (tool) => set({ builderTool: tool }),
 
       flyTo: (lat, lng) => set({ pendingFlyTo: { lat, lng } }),
       clearFlyTo: () => set({ pendingFlyTo: null }),
+      setClickedCoord: (coord) => set({ clickedCoord: coord }),
 
       loadRouteForEdit: (route) =>
         set({
