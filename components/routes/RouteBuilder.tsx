@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { X, Route, Loader2, Save, AlertCircle, MapPin, Plus, Navigation, Pencil } from 'lucide-react';
+import { X, Route, Loader2, Save, AlertCircle, MapPin, Plus, Navigation, Pencil, List, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -66,6 +66,9 @@ export default function RouteBuilder() {
   const [isSaving, setIsSaving] = useState(false);
   const [coordInput, setCoordInput] = useState('');
   const [coordError, setCoordError] = useState<string | null>(null);
+  const [bulkInput, setBulkInput] = useState('');
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [showBulk, setShowBulk] = useState(false);
 
   const parsedCoord = useMemo(() => parseCoord(coordInput), [coordInput]);
 
@@ -93,6 +96,37 @@ export default function RouteBuilder() {
     addPointAtLatLng(parsedCoord.lat, parsedCoord.lng);
     flyTo(parsedCoord.lat, parsedCoord.lng);
     setCoordInput('');
+  };
+
+  const handleBulkImport = () => {
+    const raw = bulkInput.trim();
+    if (!raw) { setBulkError('Paste coordinates first'); return; }
+    const parts = raw.split(';').map(s => s.trim()).filter(Boolean);
+    if (parts.length < 2) { setBulkError('Need at least 2 coordinates (separate with ;)'); return; }
+
+    const coords: { lat: number; lng: number }[] = [];
+    for (const p of parts) {
+      const c = parseCoord(p);
+      if (!c) { setBulkError(`Invalid: "${p}" — use "lat,lng" format`); return; }
+      coords.push(c);
+    }
+
+    const hasExistingPath = points.filter(p => p.type !== 'poi').length > 0;
+    coords.forEach((c, i) => {
+      let type: 'start' | 'waypoint' | 'destination' = 'waypoint';
+      if (!hasExistingPath && i === 0) type = 'start';
+      if (!hasExistingPath && i === coords.length - 1) type = 'destination';
+      const label =
+        type === 'start' ? 'Start' :
+        type === 'destination' ? 'Destination' :
+        `Point ${points.length + i + 1}`;
+      addPoint({ label, type, lat: c.lat, lng: c.lng });
+    });
+
+    flyTo(coords[0].lat, coords[0].lng);
+    setBulkInput('');
+    setBulkError(null);
+    setShowBulk(false);
   };
 
   const handleGenerate = async () => {
@@ -248,6 +282,47 @@ export default function RouteBuilder() {
             </div>
             {coordError && (
               <p className="text-xs text-destructive">{coordError}</p>
+            )}
+          </section>
+
+          <Separator />
+
+          {/* Bulk import */}
+          <section className="space-y-2">
+            <button
+              onClick={() => setShowBulk(v => !v)}
+              className="flex items-center justify-between w-full text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <List className="w-3.5 h-3.5" />
+                Bulk Import Coordinates
+              </span>
+              {showBulk ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            {showBulk && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Format: <code className="bg-muted px-1 rounded">lat,lng;lat,lng;lat,lng</code>
+                </p>
+                <textarea
+                  value={bulkInput}
+                  onChange={(e) => { setBulkInput(e.target.value); setBulkError(null); }}
+                  placeholder="21.5150,92.1633;21.5127,92.1742;21.5088,92.1743"
+                  className="w-full h-24 text-xs font-mono rounded-md border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                {bulkError && (
+                  <p className="text-xs text-destructive">{bulkError}</p>
+                )}
+                <Button
+                  size="sm"
+                  className="w-full h-8 text-xs"
+                  onClick={handleBulkImport}
+                  disabled={!bulkInput.trim()}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
+                  Import All Points
+                </Button>
+              </div>
             )}
           </section>
 
