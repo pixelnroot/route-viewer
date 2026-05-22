@@ -31,30 +31,32 @@ const POINT_LETTER: Record<PointType, string> = {
 };
 
 // Classic Google Maps-style location pin: large circle head + teardrop tail + white hole
+// Canvas angle note (Y-axis DOWN): 0=right, 90=DOWN, 180=left, 270=UP
+// 60° = lower-right of circle, 120° = lower-left of circle
+// Arc clockwise from 120° to 60° = sweeps over the top (300° of circle = the head)
 function createLocationPin(color: string, W = 32, H = 48): string {
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d')!;
   const cx = W / 2;
-  const r = W / 2 - 1;   // head circle radius
-  const cy = r + 1;       // head circle center y
+  const r = cx - 1;
+  const cy = r + 1;
 
-  // Drop shadow
   ctx.shadowColor = 'rgba(0,0,0,0.4)';
   ctx.shadowBlur = 5;
   ctx.shadowOffsetY = 3;
   ctx.fillStyle = color;
 
-  // Teardrop path:
-  // Arc anticlockwise from 210° to 330° sweeps over the top (240° arc = the head)
-  // Then straight lines down to the tip, then closePath back
   ctx.beginPath();
-  ctx.arc(cx, cy, r, (7 * Math.PI) / 6, (11 * Math.PI) / 6, true); // 210°→330° anticlockwise = top
-  ctx.lineTo(cx, H - 2);   // right side line to tip
-  ctx.closePath();          // closes: tip back to 210° point (left side)
+  // Clockwise (anticlockwise=false) from 120° to 60° sweeps the LONG way over the top (300° arc)
+  ctx.arc(cx, cy, r, (2 * Math.PI) / 3, Math.PI / 3, false);
+  // Arc ends at 60° (lower-right of circle) → line to tip
+  ctx.lineTo(cx, H - 2);
+  // closePath draws line from tip back to 120° point (lower-left of circle)
+  ctx.closePath();
   ctx.fill();
 
-  // White inner hole circle
+  // White inner hole
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
