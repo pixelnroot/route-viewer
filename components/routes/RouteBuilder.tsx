@@ -69,7 +69,7 @@ export default function RouteBuilder() {
   const [coordError, setCoordError] = useState<string | null>(null);
   const [bulkInput, setBulkInput] = useState('');
   const [bulkError, setBulkError] = useState<string | null>(null);
-  const [showBulk, setShowBulk] = useState(false);
+  const [showBulk, setShowBulk] = useState(true);
 
   const parsedCoord = useMemo(() => parseCoord(coordInput), [coordInput]);
 
@@ -219,36 +219,7 @@ export default function RouteBuilder() {
 
       <ScrollArea className="flex-1 min-h-0 overflow-hidden">
         <div className="p-4 space-y-5">
-          {/* Tool Toggle */}
-          <section className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Map Tool
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant={builderTool === 'draw_path' ? 'default' : 'outline'}
-                size="sm"
-                className="h-8 text-xs"
-                onClick={() => setBuilderTool('draw_path')}
-              >
-                <Route className="w-3.5 h-3.5 mr-1.5" />
-                Draw Path
-              </Button>
-              <Button
-                variant={builderTool === 'add_poi' ? 'default' : 'outline'}
-                size="sm"
-                className="h-8 text-xs"
-                onClick={() => setBuilderTool('add_poi')}
-              >
-                <MapPin className="w-3.5 h-3.5 mr-1.5" />
-                Add Checkpost
-              </Button>
-            </div>
-          </section>
-
-          <Separator />
-
-          {/* Coordinate search */}
+          {/* Coordinate search — single point */}
           <section className="space-y-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Add by Coordinate
@@ -258,7 +229,7 @@ export default function RouteBuilder() {
                 value={coordInput}
                 onChange={(e) => { setCoordInput(e.target.value); setCoordError(null); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddCoord(); }}
-                placeholder="lat, lng — e.g. 23.79, 90.41"
+                placeholder="lat, lng — e.g. 21.51, 92.16"
                 className="h-8 text-xs flex-1"
               />
               <Button
@@ -303,13 +274,13 @@ export default function RouteBuilder() {
             {showBulk && (
               <div className="space-y-2">
                 <p className="text-[11px] text-muted-foreground">
-                  Format: <code className="bg-muted px-1 rounded">lat,lng;lat,lng;lat,lng</code>
+                  Paste all at once: <code className="bg-muted px-1 rounded">lat,lng;lat,lng;lat,lng</code>
                 </p>
                 <textarea
                   value={bulkInput}
                   onChange={(e) => { setBulkInput(e.target.value); setBulkError(null); }}
                   placeholder="21.5150,92.1633;21.5127,92.1742;21.5088,92.1743"
-                  className="w-full h-24 text-xs font-mono rounded-md border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full h-28 text-xs font-mono rounded-md border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 {bulkError && (
                   <p className="text-xs text-destructive">{bulkError}</p>
@@ -325,6 +296,35 @@ export default function RouteBuilder() {
                 </Button>
               </div>
             )}
+          </section>
+
+          <Separator />
+
+          {/* Tool Toggle */}
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Map Tool (click on map)
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant={builderTool === 'draw_path' ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => setBuilderTool('draw_path')}
+              >
+                <Route className="w-3.5 h-3.5 mr-1.5" />
+                Draw Path
+              </Button>
+              <Button
+                variant={builderTool === 'add_poi' ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => setBuilderTool('add_poi')}
+              >
+                <MapPin className="w-3.5 h-3.5 mr-1.5" />
+                Add Checkpost
+              </Button>
+            </div>
           </section>
 
           <Separator />
