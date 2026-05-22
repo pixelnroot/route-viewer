@@ -51,6 +51,10 @@ interface RouteBuilderState {
   removeCategory: (id: string) => void;
   setCategoryFilter: (id: string | null) => void;
 
+  // checkpost visibility (affects both detail panel list AND map markers)
+  showCheckposts: boolean;
+  setShowCheckposts: (v: boolean) => void;
+
   // mode actions
   setMode: (mode: AppMode) => void;
   setBuilderTool: (tool: BuilderTool) => void;
@@ -117,6 +121,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       editingRouteId: null,
       categories: [],
       categoryFilter: null,
+      showCheckposts: true,
       pendingFlyTo: null,
       routeIsFallback: false,
       clickedCoord: null,
@@ -219,6 +224,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
 
       setGenerateError: (err) => set({ generateError: err }),
 
+      setShowCheckposts: (v) => set({ showCheckposts: v }),
       setCategories: (cats) => set({ categories: cats }),
       addCategory: (cat) => set((s) => ({ categories: [...s.categories, cat] })),
       updateCategory: (cat) =>

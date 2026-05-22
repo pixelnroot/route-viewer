@@ -153,6 +153,7 @@ export default function MapView() {
     savedRoutes,
     selectedRouteId,
     categoryFilter,
+    showCheckposts,
     pendingFlyTo,
     generatedGeometry,
     clickedCoord,
@@ -165,7 +166,8 @@ export default function MapView() {
     ? builderPoints
     : savedRoutes.flatMap((r) => {
         if (categoryFilter && r.category_id !== categoryFilter) return [];
-        return r.points ?? [];
+        const pts = r.points ?? [];
+        return showCheckposts ? pts : pts.filter(p => p.type !== 'poi');
       });
 
   // Load Google Maps and initialise

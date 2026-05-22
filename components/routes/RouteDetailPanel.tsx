@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,15 +16,14 @@ const POINT_TYPE_COLORS: Record<PointType, string> = {
 };
 
 export default function RouteDetailPanel() {
-  const { selectedRouteId, savedRoutes, categories, selectRoute } = useRouteBuilderStore();
-  const [showCheckpost, setShowCheckpost] = useState(true);
+  const { selectedRouteId, savedRoutes, categories, selectRoute, showCheckposts, setShowCheckposts } = useRouteBuilderStore();
 
   const route = savedRoutes.find((r) => r.id === selectedRouteId);
   if (!route) return null;
 
   const allSorted = [...route.points].sort((a, b) => a.order - b.order);
   const hasCheckposts = allSorted.some(p => p.type === 'poi');
-  const sorted = showCheckpost ? allSorted : allSorted.filter(p => p.type !== 'poi');
+  const sorted = showCheckposts ? allSorted : allSorted.filter(p => p.type !== 'poi');
   const category = route.category_id ? categories.find((c) => c.id === route.category_id) : null;
 
   return (
@@ -52,10 +50,10 @@ export default function RouteDetailPanel() {
       {hasCheckposts && (
         <div className="px-4 py-2 border-b border-border flex-shrink-0 flex gap-1.5">
           <button
-            onClick={() => setShowCheckpost(true)}
+            onClick={() => setShowCheckposts(true)}
             className={cn(
               'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
-              showCheckpost
+              showCheckposts
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'border-border text-muted-foreground hover:bg-accent'
             )}
@@ -63,10 +61,10 @@ export default function RouteDetailPanel() {
             With Checkpost
           </button>
           <button
-            onClick={() => setShowCheckpost(false)}
+            onClick={() => setShowCheckposts(false)}
             className={cn(
               'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
-              !showCheckpost
+              !showCheckposts
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'border-border text-muted-foreground hover:bg-accent'
             )}
@@ -100,7 +98,7 @@ export default function RouteDetailPanel() {
           {/* Points */}
           <section>
             <p className="text-sm font-bold text-foreground uppercase tracking-wider mb-3">
-              Route Points ({sorted.length}{!showCheckpost && hasCheckposts ? ` of ${allSorted.length}` : ''})
+              Route Points ({sorted.length}{!showCheckposts && hasCheckposts ? ` of ${allSorted.length}` : ''})
             </p>
             <div className="space-y-4">
               {sorted.map((pt, i) => (
