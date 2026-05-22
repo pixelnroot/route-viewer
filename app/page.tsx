@@ -139,21 +139,21 @@ function RouteCard({
 function RouteSidebar() {
   const {
     savedRoutes, selectedRouteId, categories, categoryFilter,
+    sidebarCheckpostFilter, setSidebarCheckpostFilter,
     setCategoryFilter, selectRoute,
   } = useRouteBuilderStore();
 
   const [collapsed, setCollapsed] = useState(false);
-  const [checkpostFilter, setCheckpostFilter] = useState<'all' | 'with' | 'without'>('all');
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
 
   const filtered = useMemo(() => {
     let routes = categoryFilter
       ? savedRoutes.filter(r => r.category_id === categoryFilter)
       : savedRoutes;
-    if (checkpostFilter === 'with') routes = routes.filter(r => r.points.some(p => p.type === 'poi'));
-    if (checkpostFilter === 'without') routes = routes.filter(r => !r.points.some(p => p.type === 'poi'));
+    if (sidebarCheckpostFilter === 'with') routes = routes.filter(r => r.points.some(p => p.type === 'poi'));
+    if (sidebarCheckpostFilter === 'without') routes = routes.filter(r => !r.points.some(p => p.type === 'poi'));
     return routes;
-  }, [savedRoutes, categoryFilter, checkpostFilter]);
+  }, [savedRoutes, categoryFilter, sidebarCheckpostFilter]);
 
   if (collapsed) {
     return (
@@ -242,10 +242,10 @@ function RouteSidebar() {
           {(['all', 'with', 'without'] as const).map(f => (
             <button
               key={f}
-              onClick={() => setCheckpostFilter(f)}
+              onClick={() => setSidebarCheckpostFilter(f)}
               className={cn(
                 'text-xs px-2.5 py-1 rounded-full border font-medium transition-colors flex-1',
-                checkpostFilter === f
+                sidebarCheckpostFilter === f
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border text-muted-foreground hover:bg-accent'
               )}

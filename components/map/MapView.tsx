@@ -94,21 +94,12 @@ function createCirclePng(color: string, label: string, size: number): string {
 }
 
 function getMarkerIcon(type: PointType, _size: number): google.maps.Icon {
-  if (type === 'waypoint') {
-    const s = 22;
-    return {
-      url: createCirclePng(POINT_COLORS[type], POINT_LETTER[type], s),
-      scaledSize: new google.maps.Size(s, s),
-      anchor: new google.maps.Point(s / 2, s / 2),
-    };
-  }
-  // start, destination, poi — all use location pin (different colors)
-  const W = type === 'poi' ? 26 : 32;
-  const H = type === 'poi' ? 38 : 48;
+  const sizes: Record<PointType, number> = { start: 32, destination: 32, poi: 28, waypoint: 22 };
+  const s = sizes[type];
   return {
-    url: createLocationPin(POINT_COLORS[type], W, H),
-    scaledSize: new google.maps.Size(W, H),
-    anchor: new google.maps.Point(W / 2, H - 2), // anchored at tip
+    url: createCirclePng(POINT_COLORS[type], POINT_LETTER[type], s),
+    scaledSize: new google.maps.Size(s, s),
+    anchor: new google.maps.Point(s / 2, s / 2),
   };
 }
 
@@ -154,6 +145,7 @@ export default function MapView() {
     selectedRouteId,
     categoryFilter,
     showCheckposts,
+    sidebarCheckpostFilter,
     pendingFlyTo,
     generatedGeometry,
     clickedCoord,
@@ -162,10 +154,17 @@ export default function MapView() {
     updatePoint,
   } = useRouteBuilderStore();
 
+  const visibleRoutes = savedRoutes.filter(r => {
+    if (categoryFilter && r.category_id !== categoryFilter) return false;
+    const hasPoi = r.points.some(p => p.type === 'poi');
+    if (sidebarCheckpostFilter === 'with' && !hasPoi) return false;
+    if (sidebarCheckpostFilter === 'without' && hasPoi) return false;
+    return true;
+  });
+
   const activePoints = mode === 'create'
     ? builderPoints
-    : savedRoutes.flatMap((r) => {
-        if (categoryFilter && r.category_id !== categoryFilter) return [];
+    : visibleRoutes.flatMap(r => {
         const pts = r.points ?? [];
         return showCheckposts ? pts : pts.filter(p => p.type !== 'poi');
       });
@@ -249,9 +248,8 @@ export default function MapView() {
     polylinesRef.current.clear();
 
     if (mode !== 'create') {
-      savedRoutes.forEach((route) => {
+      visibleRoutes.forEach((route) => {
         if (!route.geometry?.coordinates?.length) return;
-        if (categoryFilter && route.category_id !== categoryFilter) return;
 
         const isSelected = route.id === selectedRouteId;
         const path = (route.geometry.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
@@ -303,7 +301,7 @@ export default function MapView() {
       });
       polylinesRef.current.set('__preview__', preview);
     }
-  }, [savedRoutes, selectedRouteId, categoryFilter, mode, generatedGeometry, mapReady]);
+  }, [visibleRoutes, selectedRouteId, mode, generatedGeometry, mapReady]);
 
   // Sync markers
   useEffect(() => {

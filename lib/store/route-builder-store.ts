@@ -55,6 +55,10 @@ interface RouteBuilderState {
   showCheckposts: boolean;
   setShowCheckposts: (v: boolean) => void;
 
+  // sidebar checkpost route filter (filters which routes show in sidebar AND on map)
+  sidebarCheckpostFilter: 'all' | 'with' | 'without';
+  setSidebarCheckpostFilter: (f: 'all' | 'with' | 'without') => void;
+
   // mode actions
   setMode: (mode: AppMode) => void;
   setBuilderTool: (tool: BuilderTool) => void;
@@ -122,6 +126,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       categories: [],
       categoryFilter: null,
       showCheckposts: true,
+      sidebarCheckpostFilter: 'all',
       pendingFlyTo: null,
       routeIsFallback: false,
       clickedCoord: null,
@@ -225,6 +230,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       setGenerateError: (err) => set({ generateError: err }),
 
       setShowCheckposts: (v) => set({ showCheckposts: v }),
+      setSidebarCheckpostFilter: (f) => set({ sidebarCheckpostFilter: f }),
       setCategories: (cats) => set({ categories: cats }),
       addCategory: (cat) => set((s) => ({ categories: [...s.categories, cat] })),
       updateCategory: (cat) =>
