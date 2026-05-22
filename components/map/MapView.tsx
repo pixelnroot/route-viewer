@@ -30,29 +30,31 @@ const POINT_LETTER: Record<PointType, string> = {
   destination: 'D',
 };
 
-function createMarkerSvgUrl(type: PointType, label: string, category?: string, icon?: string): string {
+function createMarkerSvgUrl(type: PointType, order: number, category?: string, icon?: string): string {
   const color = POINT_COLORS[type];
   const isWaypoint = type === 'waypoint';
   const hasIcon = type === 'poi' && !!icon;
   const isDiamond = type === 'poi' && !hasIcon;
-  const size = isWaypoint ? 20 : 32;
+  // Bigger sizes so markers are clearly visible on map
+  const size = isWaypoint ? 26 : 36;
   const half = size / 2;
   const r = half - 2;
-  const fontSize = hasIcon ? Math.floor(size * 0.55) : (isWaypoint ? 9 : 11);
+  const fontSize = hasIcon ? Math.floor(size * 0.5) : (isWaypoint ? 10 : 12);
 
-  let text = hasIcon
+  // Always use ASCII: letter for type or sequential number — avoids Unicode/data-URI issues
+  const text = hasIcon
     ? icon!
-    : (type === 'poi' && category ? category[0].toUpperCase() : label.charAt(0).toUpperCase() || POINT_LETTER[type]);
+    : (isDiamond ? POINT_LETTER[type] : (POINT_LETTER[type] + (isWaypoint ? String(order) : '')));
 
   let shape: string;
   if (isDiamond) {
     const d = size - 8;
     shape = `<rect x="${(size-d)/2}" y="${(size-d)/2}" width="${d}" height="${d}" rx="2" fill="${color}" stroke="white" stroke-width="2" transform="rotate(45,${half},${half})"/>`;
   } else {
-    shape = `<circle cx="${half}" cy="${half}" r="${r}" fill="${hasIcon ? 'white' : color}" stroke="${hasIcon ? color : 'white'}" stroke-width="2"/>`;
+    shape = `<circle cx="${half}" cy="${half}" r="${r}" fill="${hasIcon ? 'white' : color}" stroke="${hasIcon ? color : 'white'}" stroke-width="2.5"/>`;
   }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><filter id="s"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.4"/></filter><g filter="url(#s)">${shape}</g><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" fill="${hasIcon ? '#333' : 'white'}" font-size="${fontSize}" font-weight="700" font-family="sans-serif">${text}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><filter id="sh"><feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.5"/></filter><g filter="url(#sh)">${shape}</g><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" fill="${hasIcon ? '#333' : 'white'}" font-size="${fontSize}" font-weight="800" font-family="Arial,sans-serif">${text}</text></svg>`;
 
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
@@ -117,13 +119,15 @@ export default function MapView() {
         streetViewControl: false,
         mapTypeControl: false,
         fullscreenControl: false,
-        clickableIcons: false,
+        clickableIcons: true,
       });
 
       infoWindowRef.current = new google.maps.InfoWindow();
 
-      map.addListener('click', (e: google.maps.MapMouseEvent) => {
+      map.addListener('click', (e: google.maps.MapMouseEvent & { placeId?: string }) => {
         if (suppressClickRef.current) return;
+        // If user clicked a Google Maps POI, let native info window open — don't intercept
+        if (e.placeId) return;
         const { mode: m, addPointAtLatLng: add, setClickedCoord } = useRouteBuilderStore.getState();
         if (m === 'create') {
           add(e.latLng!.lat(), e.latLng!.lng());
@@ -257,20 +261,19 @@ export default function MapView() {
         if (pos && (Math.abs(pos.lat() - point.lat) > 1e-7 || Math.abs(pos.lng() - point.lng) > 1e-7)) {
           m.setPosition({ lat: point.lat, lng: point.lng });
         }
-        // Update icon if label/icon/category changed
-        const size = point.type === 'waypoint' ? 20 : 32;
+        const size = point.type === 'waypoint' ? 26 : 36;
         m.setIcon({
-          url: createMarkerSvgUrl(point.type, point.label, point.category, point.icon),
+          url: createMarkerSvgUrl(point.type, point.order, point.category, point.icon),
           scaledSize: new google.maps.Size(size, size),
           anchor: new google.maps.Point(size / 2, size / 2),
         });
       } else {
-        const size = point.type === 'waypoint' ? 20 : 32;
+        const size = point.type === 'waypoint' ? 26 : 36;
         const marker = new google.maps.Marker({
           position: { lat: point.lat, lng: point.lng },
           map,
           icon: {
-            url: createMarkerSvgUrl(point.type, point.label, point.category, point.icon),
+            url: createMarkerSvgUrl(point.type, point.order, point.category, point.icon),
             scaledSize: new google.maps.Size(size, size),
             anchor: new google.maps.Point(size / 2, size / 2),
           },
