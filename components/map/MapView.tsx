@@ -30,30 +30,39 @@ const POINT_LETTER: Record<PointType, string> = {
   destination: 'D',
 };
 
-function createMarkerSvgUrl(type: PointType, order: number, _category?: string, icon?: string): string {
-  const color = POINT_COLORS[type];
-  const isWaypoint = type === 'waypoint';
-  const hasIcon = type === 'poi' && !!icon;
-  const isDiamond = type === 'poi' && !hasIcon;
-  const size = isWaypoint ? 28 : 38;
+function createMarkerPng(color: string, label: string, size: number): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
   const half = size / 2;
-  const r = half - 2;
-  const fontSize = isWaypoint ? 10 : 13;
+  // Circle
+  ctx.beginPath();
+  ctx.arc(half, half, half - 2, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  // Label
+  ctx.fillStyle = 'white';
+  ctx.font = `800 ${Math.floor(size * 0.38)}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, half, half);
+  return canvas.toDataURL('image/png');
+}
 
-  // ASCII-only label — btoa fails on non-ASCII
-  const label = hasIcon ? icon! : POINT_LETTER[type];
+function getMarkerIcon(type: PointType, size: number): google.maps.Icon {
+  const url = createMarkerPng(POINT_COLORS[type], POINT_LETTER[type], size);
+  const h = size / 2;
+  return { url, scaledSize: new google.maps.Size(size, size), anchor: new google.maps.Point(h, h) };
+}
 
-  let shape: string;
-  if (isDiamond) {
-    const d = size - 10;
-    shape = `<rect x="${(size-d)/2}" y="${(size-d)/2}" width="${d}" height="${d}" rx="2" fill="${color}" stroke="white" stroke-width="2" transform="rotate(45,${half},${half})"/>`;
-  } else {
-    shape = `<circle cx="${half}" cy="${half}" r="${r}" fill="${color}" stroke="white" stroke-width="2.5"/>`;
-  }
-
-  // base64 is universally handled — encodeURIComponent sometimes fails in google maps context
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${shape}<text x="${half}" y="${half}" dy="0.35em" text-anchor="middle" fill="white" font-size="${fontSize}" font-weight="800" font-family="Arial,sans-serif">${label}</text></svg>`;
-  return `data:image/svg+xml;base64,${btoa(svg)}`;
+function getPinIcon(color: string, size: number): google.maps.Icon {
+  const url = createMarkerPng(color, '+', size);
+  const h = size / 2;
+  return { url, scaledSize: new google.maps.Size(size, size), anchor: new google.maps.Point(h, h) };
 }
 
 function getPopupHTML(point: RoutePoint): string {
@@ -75,6 +84,7 @@ export default function MapView() {
   const mapRef = useRef<google.maps.Map | null>(null);
   const polylinesRef = useRef<globalThis.Map<string, google.maps.Polyline>>(new globalThis.Map());
   const markersRef = useRef<globalThis.Map<string, google.maps.Marker>>(new globalThis.Map());
+  const pinMarkerRef = useRef<google.maps.Marker | null>(null);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const suppressClickRef = useRef(false);
 
@@ -90,6 +100,7 @@ export default function MapView() {
     categoryFilter,
     pendingFlyTo,
     generatedGeometry,
+    clickedCoord,
     selectRoute,
     addPointAtLatLng,
     updatePoint,
@@ -252,28 +263,19 @@ export default function MapView() {
     }
 
     for (const point of activePoints) {
+      const size = point.type === 'waypoint' ? 28 : 38;
       if (markersRef.current.has(point.id)) {
         const m = markersRef.current.get(point.id)!;
         const pos = m.getPosition();
         if (pos && (Math.abs(pos.lat() - point.lat) > 1e-7 || Math.abs(pos.lng() - point.lng) > 1e-7)) {
           m.setPosition({ lat: point.lat, lng: point.lng });
         }
-        const size = point.type === 'waypoint' ? 26 : 36;
-        m.setIcon({
-          url: createMarkerSvgUrl(point.type, point.order, point.category, point.icon),
-          scaledSize: new google.maps.Size(size, size),
-          anchor: new google.maps.Point(size / 2, size / 2),
-        });
+        m.setIcon(getMarkerIcon(point.type, size));
       } else {
-        const size = point.type === 'waypoint' ? 26 : 36;
         const marker = new google.maps.Marker({
           position: { lat: point.lat, lng: point.lng },
           map,
-          icon: {
-            url: createMarkerSvgUrl(point.type, point.order, point.category, point.icon),
-            scaledSize: new google.maps.Size(size, size),
-            anchor: new google.maps.Point(size / 2, size / 2),
-          },
+          icon: getMarkerIcon(point.type, size),
           draggable: mode === 'create',
           zIndex: 100,
         });
@@ -297,6 +299,28 @@ export default function MapView() {
       }
     }
   }, [activePoints, mode, mapReady, updatePoint]);
+
+  // Clicked/searched coordinate pin marker
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    if (!clickedCoord) {
+      pinMarkerRef.current?.setMap(null);
+      pinMarkerRef.current = null;
+      return;
+    }
+    if (pinMarkerRef.current) {
+      pinMarkerRef.current.setPosition({ lat: clickedCoord.lat, lng: clickedCoord.lng });
+    } else {
+      pinMarkerRef.current = new google.maps.Marker({
+        position: { lat: clickedCoord.lat, lng: clickedCoord.lng },
+        map,
+        icon: getPinIcon('#f97316', 38),
+        zIndex: 200,
+        title: `${clickedCoord.lat.toFixed(6)}, ${clickedCoord.lng.toFixed(6)}`,
+      });
+    }
+  }, [clickedCoord, mapReady]);
 
   // Zoom to selected route
   useEffect(() => {
