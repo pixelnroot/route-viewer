@@ -52,6 +52,7 @@ export default function RouteBuilder() {
     setGeneratedGeometry,
     setIsGenerating,
     setGenerateError,
+    addPoint,
     addSavedRoute,
     updateSavedRoute,
     selectRoute,
