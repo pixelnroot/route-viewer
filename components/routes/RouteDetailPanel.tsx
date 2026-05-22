@@ -24,22 +24,22 @@ export default function RouteDetailPanel() {
   const category = route.category_id ? categories.find((c) => c.id === route.category_id) : null;
 
   return (
-    <div className="flex flex-col h-full bg-background border-l border-border w-80">
+    <div className="flex flex-col h-full bg-background border-l border-border w-96">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <div
-            className="w-3 h-3 rounded-full flex-shrink-0"
+            className="w-3.5 h-3.5 rounded-full flex-shrink-0"
             style={{ backgroundColor: route.color }}
           />
-          <span className="font-semibold text-sm truncate">{route.name}</span>
+          <span className="font-bold text-base text-foreground truncate">{route.name}</span>
         </div>
         <button
           onClick={() => selectRoute(null)}
-          className="text-muted-foreground hover:text-foreground flex-shrink-0 ml-2"
+          className="text-foreground/60 hover:text-foreground flex-shrink-0 ml-2"
           aria-label="Close"
         >
-          <X className="w-4 h-4" />
+          <X className="w-5 h-5" />
         </button>
       </div>
 
@@ -50,7 +50,7 @@ export default function RouteDetailPanel() {
             <div className="flex flex-wrap gap-1.5">
               <Badge
                 variant="outline"
-                className="font-medium"
+                className="font-semibold text-sm"
                 style={{ borderColor: category.color, color: category.color }}
               >
                 {category.name}
@@ -59,39 +59,39 @@ export default function RouteDetailPanel() {
           )}
 
           {route.description && (
-            <p className="text-sm text-muted-foreground">{route.description}</p>
+            <p className="text-sm text-foreground leading-relaxed">{route.description}</p>
           )}
 
           <Separator />
 
           {/* Points */}
           <section>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            <p className="text-sm font-bold text-foreground uppercase tracking-wider mb-3">
               Route Points ({sorted.length})
             </p>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {sorted.map((pt, i) => (
-                <div key={pt.id} className="flex items-start gap-2">
+                <div key={pt.id} className="flex items-start gap-3">
                   <div className="flex flex-col items-center flex-shrink-0">
                     <div
-                      className={`w-5 h-5 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-[9px] font-bold`}
+                      className={`w-6 h-6 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold`}
                     >
                       {pt.icon ?? (i + 1)}
                     </div>
                     {i < sorted.length - 1 && (
-                      <div className="w-px h-4 bg-border mt-0.5" />
+                      <div className="w-px h-5 bg-border mt-1" />
                     )}
                   </div>
                   <div className="pb-1 min-w-0 flex-1">
-                    <p className="text-xs font-medium truncate">{pt.label}</p>
+                    <p className="text-sm font-semibold text-foreground">{pt.label}</p>
                     {pt.category && (
-                      <p className="text-[10px] text-muted-foreground capitalize">{pt.category}</p>
+                      <p className="text-xs text-foreground/70 capitalize mt-0.5">{pt.category}</p>
                     )}
-                    <p className="text-[10px] text-muted-foreground font-mono">
+                    <p className="text-xs text-foreground/60 font-mono mt-0.5">
                       {pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}
                     </p>
                     {pt.note && (
-                      <p className="text-[10px] text-muted-foreground italic mt-0.5">
+                      <p className="text-sm text-foreground italic mt-1 leading-snug">
                         {pt.note}
                       </p>
                     )}
@@ -99,7 +99,7 @@ export default function RouteDetailPanel() {
                       <img
                         src={pt.imageUrl}
                         alt={pt.label}
-                        className="mt-1.5 w-full rounded-md object-cover max-h-32"
+                        className="mt-2 w-full rounded-md object-cover max-h-40"
                       />
                     )}
                   </div>
@@ -110,7 +110,7 @@ export default function RouteDetailPanel() {
 
           <Separator />
 
-          <section className="space-y-1 text-xs text-muted-foreground">
+          <section className="space-y-1 text-xs text-foreground/60">
             <p>Created: {new Date(route.created_at).toLocaleString()}</p>
             <p>Updated: {new Date(route.updated_at).toLocaleString()}</p>
           </section>
