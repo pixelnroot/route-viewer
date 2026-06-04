@@ -144,6 +144,28 @@ function routeHasPoi(route: SavedRoute, allRoutes: SavedRoute[]): boolean {
   return route.points.some((p) => p.type === 'poi');
 }
 
+// Point-to-segment distance check in meters (equirectangular approximation)
+function isNearGeometry(lat: number, lng: number, geo: GeoJSON.LineString, threshMeters = 50): boolean {
+  const toRad = (d: number) => d * Math.PI / 180;
+  const R = 6371000;
+  const cosLat = Math.cos(toRad(lat));
+  const coords = geo.coordinates as [number, number][];
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lng1, lat1] = coords[i];
+    const [lng2, lat2] = coords[i + 1];
+    const x = (lng - lng1) * toRad(1) * R * cosLat;
+    const y = (lat - lat1) * toRad(1) * R;
+    const dx = (lng2 - lng1) * toRad(1) * R * cosLat;
+    const dy = (lat2 - lat1) * toRad(1) * R;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, (x * dx + y * dy) / len2)) : 0;
+    const px = x - t * dx;
+    const py = y - t * dy;
+    if (Math.sqrt(px * px + py * py) < threshMeters) return true;
+  }
+  return false;
+}
+
 export default function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -157,6 +179,10 @@ export default function MapView() {
   const [mapType, setMapType] = useState<MapType>('roadmap');
   const [menuOpen, setMenuOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [pickerRoutes, setPickerRoutes] = useState<SavedRoute[]>([]);
+  const [pickerPos, setPickerPos] = useState<{ x: number; y: number } | null>(null);
+  const closePickerRef = useRef<() => void>(() => {});
+  closePickerRef.current = () => { setPickerRoutes([]); setPickerPos(null); };
 
   const {
     mode,
@@ -189,10 +215,13 @@ export default function MapView() {
         if (!selectedRouteId) return [];
         const sel = savedRoutes.find(r => r.id === selectedRouteId);
         if (!sel || sel.type !== 'main') return [];
-        const pts = (sel.sub_route_ids ?? []).flatMap(id => {
-          const sub = savedRoutes.find(r => r.id === id);
-          return sub?.points ?? [];
-        });
+        const pts = [
+          ...(sel.points ?? []),
+          ...(sel.sub_route_ids ?? []).flatMap(id => {
+            const sub = savedRoutes.find(r => r.id === id);
+            return sub?.points ?? [];
+          }),
+        ];
         return showCheckposts ? pts : pts.filter(p => p.type !== 'poi');
       })();
 
@@ -219,6 +248,7 @@ export default function MapView() {
         if (suppressClickRef.current) return;
         // If user clicked a Google Maps POI, let native info window open — don't intercept
         if (e.placeId) return;
+        closePickerRef.current();
         const { mode: m, addPointAtLatLng: add, setClickedCoord } = useRouteBuilderStore.getState();
         if (m === 'create') {
           add(e.latLng!.lat(), e.latLng!.lng());
@@ -293,11 +323,39 @@ export default function MapView() {
           clickable: true,
         });
 
-        polyline.addListener('click', () => {
+        polyline.addListener('click', (e: google.maps.MapMouseEvent) => {
           suppressClickRef.current = true;
           setTimeout(() => { suppressClickRef.current = false; }, 0);
-          useRouteBuilderStore.getState().selectRoute(route.id);
           infoWindowRef.current?.close();
+
+          const dom = e.domEvent as MouseEvent;
+          const rect = mapContainer.current?.getBoundingClientRect();
+          const px = rect ? dom.clientX - rect.left : dom.clientX;
+          const py = rect ? dom.clientY - rect.top : dom.clientY;
+
+          const { savedRoutes: sr, categoryFilter: cf, sidebarCheckpostFilter: scf } = useRouteBuilderStore.getState();
+          const allVisible = sr.filter((r) => {
+            if (r.type !== 'main') return false;
+            if (cf && r.category_id !== cf) return false;
+            const hp = routeHasPoi(r, sr);
+            if (scf === 'with' && !hp) return false;
+            if (scf === 'without' && hp) return false;
+            return true;
+          });
+
+          const latlng = e.latLng!;
+          const near = allVisible.filter((r) => {
+            const geo = getDisplayGeometry(r, sr);
+            return geo ? isNearGeometry(latlng.lat(), latlng.lng(), geo) : false;
+          });
+
+          if (near.length <= 1) {
+            useRouteBuilderStore.getState().selectRoute(near[0]?.id ?? route.id);
+            closePickerRef.current();
+          } else {
+            setPickerRoutes(near);
+            setPickerPos({ x: px, y: py });
+          }
         });
 
         polyline.addListener('mouseover', () => {
@@ -443,6 +501,30 @@ export default function MapView() {
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
+
+      {/* Route picker — shown when multiple routes overlap at click point */}
+      {pickerRoutes.length > 1 && pickerPos && (
+        <div
+          className="absolute z-50 bg-background border border-border rounded-lg shadow-xl p-1.5 min-w-[200px] max-w-[260px]"
+          style={{ left: pickerPos.x + 8, top: pickerPos.y - 8 }}
+        >
+          <p className="text-[11px] text-muted-foreground font-medium px-2 py-1">Select route:</p>
+          {pickerRoutes.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => {
+                useRouteBuilderStore.getState().selectRoute(r.id);
+                setPickerRoutes([]);
+                setPickerPos(null);
+              }}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-left transition-colors"
+            >
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
+              <span className="text-sm truncate text-foreground">{r.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Map type toggle */}
       <div className="absolute bottom-6 right-6 z-10 flex flex-col items-end gap-2">

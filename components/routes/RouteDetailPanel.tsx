@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, Layers, PlayCircle, ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react';
+import { X, Layers, PlayCircle, ChevronLeft, ChevronRight, Play, Pause, ChevronDown, MapPin } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -30,6 +30,8 @@ export default function RouteDetailPanel() {
   const [presentationActive, setPresentationActive] = useState(false);
   const [presentationIdx, setPresentationIdx] = useState(0);
   const [autoPlay, setAutoPlay] = useState(false);
+  const [detailTab, setDetailTab] = useState<'overview' | 'by-subroute'>('overview');
+  const [expandedSubId, setExpandedSubId] = useState<string | null>(null);
 
   const route = savedRoutes.find((r) => r.id === selectedRouteId);
 
@@ -39,11 +41,20 @@ export default function RouteDetailPanel() {
         .filter((r): r is SavedRoute => !!r)
     : [];
 
-  const mainPointsWithSource: PointWithSource[] = subRoutes.flatMap((sub) =>
-    [...sub.points]
-      .sort((a, b) => a.order - b.order)
-      .map((p) => ({ ...p, _subRouteName: sub.name, _subRouteColor: sub.color }))
-  );
+  const mainDirectPoints: PointWithSource[] = (route?.type === 'main' && (route.points ?? []).length > 0)
+    ? [...(route.points ?? [])].sort((a, b) => a.order - b.order).map((p) => ({
+        ...p, _subRouteName: 'Direct', _subRouteColor: route!.color,
+      }))
+    : [];
+
+  const mainPointsWithSource: PointWithSource[] = [
+    ...mainDirectPoints,
+    ...subRoutes.flatMap((sub) =>
+      [...sub.points]
+        .sort((a, b) => a.order - b.order)
+        .map((p) => ({ ...p, _subRouteName: sub.name, _subRouteColor: sub.color }))
+    ),
+  ];
 
   const mainHasCheckposts = mainPointsWithSource.some((p) => p.type === 'poi');
   const mainVisiblePoints = showCheckposts
@@ -54,6 +65,8 @@ export default function RouteDetailPanel() {
     setPresentationActive(false);
     setPresentationIdx(0);
     setAutoPlay(false);
+    setDetailTab('overview');
+    setExpandedSubId(null);
   }, [selectedRouteId]);
 
   useEffect(() => {
@@ -140,6 +153,34 @@ export default function RouteDetailPanel() {
               )}
             >
               Without Checkpost
+            </button>
+          </div>
+        )}
+
+        {/* Tabs — only show when not in presentation */}
+        {!presentationActive && (
+          <div className="flex border-b border-border flex-shrink-0">
+            <button
+              onClick={() => setDetailTab('overview')}
+              className={cn(
+                'flex-1 text-xs font-medium py-2 transition-colors',
+                detailTab === 'overview'
+                  ? 'border-b-2 border-primary text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Overview
+            </button>
+            <button
+              onClick={() => setDetailTab('by-subroute')}
+              className={cn(
+                'flex-1 text-xs font-medium py-2 transition-colors',
+                detailTab === 'by-subroute'
+                  ? 'border-b-2 border-primary text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              By Sub-route ({subRoutes.length})
             </button>
           </div>
         )}
@@ -250,8 +291,89 @@ export default function RouteDetailPanel() {
               </button>
             </div>
           </div>
+        ) : detailTab === 'by-subroute' ? (
+          /* By Sub-route tab */
+          <ScrollArea className="flex-1 min-h-0 overflow-hidden">
+            <div className="p-4 space-y-2">
+              {mainDirectPoints.length > 0 && (
+                <div className="border border-border rounded-md overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-card">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: route.color }} />
+                    <span className="text-sm font-medium flex-1">Direct Waypoints</span>
+                    <span className="text-xs text-muted-foreground">{mainDirectPoints.length} pts</span>
+                  </div>
+                  <div className="px-3 pb-3 pt-1 space-y-2 border-t border-border">
+                    {mainDirectPoints.map((pt, i) => (
+                      <button
+                        key={pt.id}
+                        onClick={() => useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng)}
+                        className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-md px-1 py-0.5 transition-colors"
+                      >
+                        <div className={`w-5 h-5 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5`}>
+                          {i + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {subRoutes.map((sub) => {
+                const subPts = [...sub.points]
+                  .sort((a, b) => a.order - b.order)
+                  .filter((p) => showCheckposts || p.type !== 'poi');
+                const isOpen = expandedSubId === sub.id;
+                return (
+                  <div key={sub.id} className="border border-border rounded-md overflow-hidden">
+                    <button
+                      onClick={() => setExpandedSubId(isOpen ? null : sub.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 bg-card hover:bg-accent text-left transition-colors"
+                    >
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: sub.color }} />
+                      <span className="text-sm font-medium flex-1 truncate">{sub.name}</span>
+                      <span className="text-xs text-muted-foreground mr-1">{subPts.length} pts</span>
+                      <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground transition-transform flex-shrink-0', isOpen && 'rotate-180')} />
+                    </button>
+                    {isOpen && (
+                      <div className="px-3 pb-3 pt-1 space-y-1.5 border-t border-border">
+                        {subPts.length > 0 && (
+                          <button
+                            onClick={() => { const pt = subPts[0]; if (pt) useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng); }}
+                            className="flex items-center gap-1 text-xs text-primary hover:underline mt-1 mb-2"
+                          >
+                            <MapPin className="w-3 h-3" /> Navigate to start
+                          </button>
+                        )}
+                        {subPts.map((pt, i) => (
+                          <button
+                            key={pt.id}
+                            onClick={() => useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng)}
+                            className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-md px-1 py-0.5 transition-colors"
+                          >
+                            <div className={`w-5 h-5 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5`}>
+                              {i + 1}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
+                              <p className="text-xs text-muted-foreground font-mono">{pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}</p>
+                            </div>
+                          </button>
+                        ))}
+                        {subPts.length === 0 && (
+                          <p className="text-xs text-muted-foreground py-2 text-center">No points to display.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
         ) : (
-          /* Normal view */
+          /* Overview tab */
           <ScrollArea className="flex-1 min-h-0 overflow-hidden">
             <div className="p-4 space-y-4">
               {category && (
@@ -288,6 +410,32 @@ export default function RouteDetailPanel() {
                   {!showCheckposts && mainHasCheckposts ? ` of ${mainPointsWithSource.length}` : ''})
                 </p>
                 <div className="space-y-5">
+                  {/* Direct waypoints on the main route itself */}
+                  {mainDirectPoints.filter(p => showCheckposts || p.type !== 'poi').length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: route.color }} />
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Direct Waypoints</p>
+                      </div>
+                      <div className="space-y-3 pl-3 border-l-2" style={{ borderColor: route.color + '50' }}>
+                        {mainDirectPoints.filter(p => showCheckposts || p.type !== 'poi').map((pt, i) => (
+                          <div key={pt.id} className="flex items-start gap-3">
+                            <div className="flex flex-col items-center flex-shrink-0">
+                              <div className={`w-6 h-6 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold`}>
+                                {pt.icon ?? (i + 1)}
+                              </div>
+                            </div>
+                            <div className="pb-1 min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-foreground">{pt.label}</p>
+                              <p className="text-xs text-foreground/60 font-mono mt-0.5">{pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}</p>
+                              {pt.note && <p className="text-sm text-foreground italic mt-1 leading-snug">{pt.note}</p>}
+                              {pt.imageUrl && <img src={pt.imageUrl} alt={pt.label} className="mt-2 w-full rounded-md object-cover max-h-40" />}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {subRoutes.map((sub) => {
                     const subPoints = [...sub.points]
                       .sort((a, b) => a.order - b.order)

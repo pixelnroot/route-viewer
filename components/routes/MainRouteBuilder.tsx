@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import {
-  X, Layers, Save, Loader2, AlertCircle, Plus, Minus, GripVertical,
+  X, Layers, Save, Loader2, AlertCircle, Plus, Minus, GripVertical, MapPin, Trash2,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -21,7 +22,7 @@ import { Separator } from '@/components/ui/separator';
 import RouteColorPicker from './RouteColorPicker';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
-import type { SavedRoute } from '@/types/routes';
+import type { PointType, RoutePoint, SavedRoute } from '@/types/routes';
 
 function SortableSubRoute({
   id, name, color, onRemove,
@@ -54,12 +55,51 @@ export default function MainRouteBuilder() {
     savedRoutes, mainRouteSubRouteIds, mainRouteMeta, editingRouteId,
     addSubRouteToMain, removeSubRouteFromMain, reorderMainSubRoutes,
     setMainRouteMeta, setMode, addSavedRoute, updateSavedRoute,
-    selectRoute, resetMainBuilder, resetBuilder,
+    selectRoute, resetMainBuilder, resetBuilder, clickedCoord,
   } = useRouteBuilderStore();
   const { editKey, setEditKey } = useAuthStore();
 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [manualPoints, setManualPoints] = useState<RoutePoint[]>([]);
+  const [showAddPoint, setShowAddPoint] = useState(false);
+  const [newPtLabel, setNewPtLabel] = useState('');
+  const [newPtType, setNewPtType] = useState<PointType>('waypoint');
+  const [newPtLat, setNewPtLat] = useState('');
+  const [newPtLng, setNewPtLng] = useState('');
+  const [newPtNote, setNewPtNote] = useState('');
+
+  useEffect(() => {
+    if (editingRouteId) {
+      const existing = savedRoutes.find((r) => r.id === editingRouteId);
+      setManualPoints(existing?.points ?? []);
+    } else {
+      setManualPoints([]);
+    }
+  }, [editingRouteId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addManualPoint = () => {
+    const lat = parseFloat(newPtLat);
+    const lng = parseFloat(newPtLng);
+    if (!newPtLabel.trim() || isNaN(lat) || isNaN(lng)) return;
+    const pt: RoutePoint = {
+      id: uuidv4(),
+      label: newPtLabel.trim(),
+      type: newPtType,
+      lat,
+      lng,
+      note: newPtNote.trim() || undefined,
+      order: manualPoints.length,
+    };
+    setManualPoints((prev) => [...prev, pt]);
+    setNewPtLabel('');
+    setNewPtType('waypoint');
+    setNewPtLat('');
+    setNewPtLng('');
+    setNewPtNote('');
+    setShowAddPoint(false);
+  };
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -100,7 +140,7 @@ export default function MainRouteBuilder() {
         risk_level: mainRouteMeta.risk_level ?? 'low',
         travel_mode: mainRouteMeta.travel_mode ?? 'driving',
         category_id: mainRouteMeta.category_id,
-        points: [],
+        points: manualPoints,
         geometry: combinedGeometry,
       };
 
@@ -206,6 +246,110 @@ export default function MainRouteBuilder() {
                   </button>
                 ))}
               </div>
+            )}
+          </section>
+
+          <Separator />
+
+          {/* Direct waypoints */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Direct Waypoints ({manualPoints.length})
+              </p>
+              {!showAddPoint && (
+                <button
+                  onClick={() => setShowAddPoint(true)}
+                  className="flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <Plus className="w-3 h-3" /> Add
+                </button>
+              )}
+            </div>
+
+            {manualPoints.length > 0 && (
+              <div className="space-y-1.5">
+                {manualPoints.map((pt, i) => (
+                  <div key={pt.id} className="flex items-center gap-2 bg-card border border-border rounded-md p-2">
+                    <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{pt.label}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{pt.lat.toFixed(4)}, {pt.lng.toFixed(4)}</p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground capitalize">{pt.type}</span>
+                    <button
+                      onClick={() => setManualPoints((prev) => prev.filter((_, j) => j !== i).map((p, j) => ({ ...p, order: j })))}
+                      className="text-muted-foreground hover:text-destructive flex-shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {showAddPoint && (
+              <div className="border border-border rounded-md p-3 space-y-2 bg-card">
+                <Input
+                  placeholder="Label *"
+                  value={newPtLabel}
+                  onChange={(e) => setNewPtLabel(e.target.value)}
+                  className="h-8 text-sm"
+                />
+                <select
+                  value={newPtType}
+                  onChange={(e) => setNewPtType(e.target.value as PointType)}
+                  className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
+                >
+                  <option value="waypoint">Waypoint</option>
+                  <option value="poi">POI / Checkpost</option>
+                  <option value="start">Start</option>
+                  <option value="destination">Destination</option>
+                </select>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Latitude"
+                    type="number"
+                    step="any"
+                    value={newPtLat}
+                    onChange={(e) => setNewPtLat(e.target.value)}
+                    className="h-8 text-sm flex-1"
+                  />
+                  <Input
+                    placeholder="Longitude"
+                    type="number"
+                    step="any"
+                    value={newPtLng}
+                    onChange={(e) => setNewPtLng(e.target.value)}
+                    className="h-8 text-sm flex-1"
+                  />
+                </div>
+                {clickedCoord && (
+                  <button
+                    onClick={() => { setNewPtLat(String(clickedCoord.lat)); setNewPtLng(String(clickedCoord.lng)); }}
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                  >
+                    <MapPin className="w-3 h-3" />
+                    Use map click ({clickedCoord.lat.toFixed(4)}, {clickedCoord.lng.toFixed(4)})
+                  </button>
+                )}
+                <Input
+                  placeholder="Note (optional)"
+                  value={newPtNote}
+                  onChange={(e) => setNewPtNote(e.target.value)}
+                  className="h-8 text-sm"
+                />
+                <div className="flex gap-2">
+                  <Button onClick={addManualPoint} className="flex-1 h-8 text-xs">Add Point</Button>
+                  <Button variant="outline" onClick={() => setShowAddPoint(false)} className="flex-1 h-8 text-xs">Cancel</Button>
+                </div>
+              </div>
+            )}
+
+            {manualPoints.length === 0 && !showAddPoint && (
+              <p className="text-xs text-muted-foreground text-center py-2 border border-dashed border-border rounded-md">
+                Add extra locations directly to this route.
+              </p>
             )}
           </section>
 
