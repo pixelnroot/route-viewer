@@ -36,8 +36,12 @@ export interface RouteMeta {
   category_id?: string;
 }
 
+export type RouteType = 'sub' | 'main';
+
 export interface SavedRoute extends RouteMeta {
   id: string;
+  type?: RouteType;           // undefined = backward-compat sub-route
+  sub_route_ids?: string[];   // ordered; only on main routes
   points: RoutePoint[];
   geometry: GeoJSON.LineString | null;
   created_at: string;

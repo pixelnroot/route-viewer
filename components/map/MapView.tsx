@@ -5,7 +5,7 @@ import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 import { Layers } from 'lucide-react';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { Button } from '@/components/ui/button';
-import type { PointType, RoutePoint } from '@/types/routes';
+import type { PointType, RoutePoint, SavedRoute } from '@/types/routes';
 
 // Called once at module level — avoids "setOptions called multiple times" warning in StrictMode
 setOptions({
@@ -125,6 +125,25 @@ function hasPopupContent(point: RoutePoint): boolean {
 
 type MapType = 'roadmap' | 'satellite' | 'terrain';
 
+function getDisplayGeometry(route: SavedRoute, allRoutes: SavedRoute[]): GeoJSON.LineString | null {
+  if (route.type !== 'main') return route.geometry;
+  const coords = (route.sub_route_ids ?? []).flatMap((id) => {
+    const sub = allRoutes.find((r) => r.id === id);
+    return (sub?.geometry?.coordinates ?? []) as [number, number][];
+  });
+  return coords.length > 0 ? { type: 'LineString', coordinates: coords } : null;
+}
+
+function routeHasPoi(route: SavedRoute, allRoutes: SavedRoute[]): boolean {
+  if (route.type === 'main') {
+    return (route.sub_route_ids ?? []).some((id) => {
+      const sub = allRoutes.find((r) => r.id === id);
+      return sub?.points.some((p) => p.type === 'poi') ?? false;
+    });
+  }
+  return route.points.some((p) => p.type === 'poi');
+}
+
 export default function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -133,6 +152,7 @@ export default function MapView() {
   const pinMarkerRef = useRef<google.maps.Marker | null>(null);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const suppressClickRef = useRef(false);
+  const initialFitDoneRef = useRef(false);
 
   const [mapType, setMapType] = useState<MapType>('roadmap');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -155,8 +175,9 @@ export default function MapView() {
   } = useRouteBuilderStore();
 
   const visibleRoutes = savedRoutes.filter(r => {
+    if (r.type !== 'main') return false;
     if (categoryFilter && r.category_id !== categoryFilter) return false;
-    const hasPoi = r.points.some(p => p.type === 'poi');
+    const hasPoi = routeHasPoi(r, savedRoutes);
     if (sidebarCheckpostFilter === 'with' && !hasPoi) return false;
     if (sidebarCheckpostFilter === 'without' && hasPoi) return false;
     return true;
@@ -164,10 +185,16 @@ export default function MapView() {
 
   const activePoints = mode === 'create'
     ? builderPoints
-    : visibleRoutes.flatMap(r => {
-        const pts = r.points ?? [];
+    : (() => {
+        if (!selectedRouteId) return [];
+        const sel = savedRoutes.find(r => r.id === selectedRouteId);
+        if (!sel || sel.type !== 'main') return [];
+        const pts = (sel.sub_route_ids ?? []).flatMap(id => {
+          const sub = savedRoutes.find(r => r.id === id);
+          return sub?.points ?? [];
+        });
         return showCheckposts ? pts : pts.filter(p => p.type !== 'poi');
-      });
+      })();
 
   // Load Google Maps and initialise
   useEffect(() => {
@@ -249,10 +276,11 @@ export default function MapView() {
 
     if (mode !== 'create') {
       visibleRoutes.forEach((route) => {
-        if (!route.geometry?.coordinates?.length) return;
+        const geometry = getDisplayGeometry(route, savedRoutes);
+        if (!geometry?.coordinates?.length) return;
 
         const isSelected = route.id === selectedRouteId;
-        const path = (route.geometry.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
+        const path = (geometry.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
 
         const polyline = new google.maps.Polyline({
           path,
@@ -377,14 +405,38 @@ export default function MapView() {
     }
   }, [clickedCoord, mapReady]);
 
+  // Auto-fit to all routes on first load
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || initialFitDoneRef.current) return;
+    if (visibleRoutes.length === 0) return;
+    const bounds = new google.maps.LatLngBounds();
+    let hasCoords = false;
+    visibleRoutes.forEach(route => {
+      const geo = getDisplayGeometry(route, savedRoutes);
+      if (geo?.coordinates?.length) {
+        (geo.coordinates as [number, number][]).forEach(([lng, lat]) => {
+          bounds.extend({ lat, lng });
+          hasCoords = true;
+        });
+      }
+    });
+    if (hasCoords) {
+      map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+      initialFitDoneRef.current = true;
+    }
+  }, [mapReady, savedRoutes.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Zoom to selected route
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedRouteId) return;
     const route = savedRoutes.find((r) => r.id === selectedRouteId);
-    if (!route?.geometry?.coordinates?.length) return;
+    if (!route) return;
+    const geometry = getDisplayGeometry(route, savedRoutes);
+    if (!geometry?.coordinates?.length) return;
     const bounds = new google.maps.LatLngBounds();
-    (route.geometry.coordinates as [number, number][]).forEach(([lng, lat]) => bounds.extend({ lat, lng }));
+    (geometry.coordinates as [number, number][]).forEach(([lng, lat]) => bounds.extend({ lat, lng }));
     map.fitBounds(bounds, { top: 120, right: 60, bottom: 60, left: 60 });
   }, [selectedRouteId, savedRoutes]);
 

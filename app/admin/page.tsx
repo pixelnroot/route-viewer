@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
   Plus, Trash2, ChevronDown, ChevronUp, Tag,
-  LogOut, Shield, Route, Loader2, AlertCircle, Pencil,
+  LogOut, Shield, Route, Loader2, AlertCircle, Pencil, Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import RouteBuilder from '@/components/routes/RouteBuilder';
+import MainRouteBuilder from '@/components/routes/MainRouteBuilder';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { cn } from '@/lib/utils';
@@ -125,7 +126,14 @@ function RouteCard({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium truncate">{route.name}</p>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className="text-[10px] text-muted-foreground">{route.points.length} pts</span>
+              {route.type === 'main' ? (
+                <span className="text-[10px] text-primary font-medium flex items-center gap-0.5">
+                  <Layers className="w-2.5 h-2.5" />
+                  {route.sub_route_ids?.length ?? 0} sub-routes
+                </span>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">{route.points.length} pts</span>
+              )}
               {category && (
                 <span
                   className="text-[10px] font-medium px-1 rounded"
@@ -260,19 +268,26 @@ function CategoryManager({ editKey }: { editKey: string }) {
 
 function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => void }) {
   const {
-    savedRoutes, selectedRouteId, mode,
+    savedRoutes, selectedRouteId, mode, builderMode,
     categories, categoryFilter,
     setSavedRoutes, setCategories,
-    selectRoute, setMode, removeSavedRoute,
-    setCategoryFilter, resetBuilder,
+    selectRoute, setMode, setBuilderMode, removeSavedRoute,
+    setCategoryFilter, resetBuilder, resetMainBuilder,
   } = useRouteBuilderStore();
 
-  const [showCategories, setShowCategories] = useState(true);
+  const [activeTab, setActiveTab] = useState<'sub' | 'main'>('sub');
+  const [showCategories, setShowCategories] = useState(false);
   const catMap = new Map(categories.map((c) => [c.id, c]));
 
+  const subCount = savedRoutes.filter(r => r.type !== 'main').length;
+  const mainCount = savedRoutes.filter(r => r.type === 'main').length;
+
+  const tabRoutes = savedRoutes.filter(r =>
+    activeTab === 'main' ? r.type === 'main' : r.type !== 'main'
+  );
   const filteredRoutes = categoryFilter
-    ? savedRoutes.filter((r) => r.category_id === categoryFilter)
-    : savedRoutes;
+    ? tabRoutes.filter(r => r.category_id === categoryFilter)
+    : tabRoutes;
 
   useEffect(() => {
     const headers = { Authorization: `Bearer ${editKey}` };
@@ -289,8 +304,21 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
   const handleCreate = () => {
     selectRoute(null);
     resetBuilder();
+    setBuilderMode('sub');
     setMode('create');
+    setActiveTab('sub');
   };
+
+  const handleCreateMain = () => {
+    selectRoute(null);
+    resetBuilder();
+    resetMainBuilder();
+    setBuilderMode('main');
+    setMode('create');
+    setActiveTab('main');
+  };
+
+  const isCreatingThisTab = mode === 'create' && builderMode === activeTab;
 
   return (
     <div className="flex flex-col h-full bg-background border-r border-border w-72">
@@ -309,6 +337,46 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
             <LogOut className="w-3.5 h-3.5" />
           </button>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex flex-shrink-0 border-b border-border">
+        <button
+          onClick={() => setActiveTab('sub')}
+          className={cn(
+            'flex-1 py-2.5 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5',
+            activeTab === 'sub'
+              ? 'text-foreground border-b-2 border-primary bg-accent/40'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/20'
+          )}
+        >
+          <Route className="w-3 h-3" />
+          Sub-Routes
+          <span className={cn(
+            'text-[10px] px-1.5 py-0.5 rounded-full font-bold',
+            activeTab === 'sub' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+          )}>
+            {subCount}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('main')}
+          className={cn(
+            'flex-1 py-2.5 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5',
+            activeTab === 'main'
+              ? 'text-foreground border-b-2 border-primary bg-accent/40'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/20'
+          )}
+        >
+          <Layers className="w-3 h-3" />
+          Main Routes
+          <span className={cn(
+            'text-[10px] px-1.5 py-0.5 rounded-full font-bold',
+            activeTab === 'main' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+          )}>
+            {mainCount}
+          </span>
+        </button>
       </div>
 
       {/* Category filter chips */}
@@ -345,16 +413,19 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
         </div>
       )}
 
-      {/* Create route button */}
+      {/* Create button (tab-contextual) */}
       <div className="px-3 py-2 flex-shrink-0">
         <Button
-          onClick={handleCreate}
+          onClick={activeTab === 'sub' ? handleCreate : handleCreateMain}
           size="sm"
           className="w-full h-8 text-xs"
-          variant={mode === 'create' ? 'secondary' : 'default'}
+          variant={isCreatingThisTab ? 'secondary' : 'default'}
         >
-          <Route className="w-3.5 h-3.5 mr-1.5" />
-          {mode === 'create' ? 'Creating Route…' : 'Create Route'}
+          {activeTab === 'sub' ? (
+            <><Route className="w-3.5 h-3.5 mr-1.5" />{isCreatingThisTab ? 'Creating Sub-Route…' : 'New Sub-Route'}</>
+          ) : (
+            <><Layers className="w-3.5 h-3.5 mr-1.5" />{isCreatingThisTab ? 'Creating Main Route…' : 'New Main Route'}</>
+          )}
         </Button>
       </div>
 
@@ -365,7 +436,11 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
         <div className="p-3 space-y-2">
           {filteredRoutes.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-6">
-              {categoryFilter ? 'No routes in this category.' : 'No routes yet.'}
+              {categoryFilter
+                ? 'No routes in this category.'
+                : activeTab === 'main'
+                ? 'No main routes yet. Create one to combine sub-routes.'
+                : 'No sub-routes yet.'}
             </p>
           ) : (
             filteredRoutes.map((route) => (
@@ -410,13 +485,17 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
 // ── Admin route detail (read + delete) ────────────────────────────────────────
 
 function AdminRouteDetail({ editKey }: { editKey: string }) {
-  const { selectedRouteId, savedRoutes, categories, selectRoute, removeSavedRoute, loadRouteForEdit } =
+  const { selectedRouteId, savedRoutes, categories, selectRoute, removeSavedRoute, loadRouteForEdit, loadMainRouteForEdit } =
     useRouteBuilderStore();
   const route = savedRoutes.find((r) => r.id === selectedRouteId);
   if (!route) return null;
 
+  const isMainRoute = route.type === 'main';
   const sorted = [...route.points].sort((a, b) => a.order - b.order);
   const category = route.category_id ? categories.find((c) => c.id === route.category_id) : null;
+  const subRoutes = isMainRoute
+    ? (route.sub_route_ids ?? []).map((id) => savedRoutes.find((r) => r.id === id)).filter(Boolean) as typeof savedRoutes
+    : [];
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
@@ -448,7 +527,7 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
-            onClick={() => loadRouteForEdit(route)}
+            onClick={() => isMainRoute ? loadMainRouteForEdit(route) : loadRouteForEdit(route)}
             className="text-muted-foreground hover:text-primary"
             title="Edit route"
           >
@@ -476,40 +555,80 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
 
           <Separator />
 
-          <section>
-            <button
-              onClick={() => setPointsExpanded(v => !v)}
-              className="flex items-center justify-between w-full text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
-            >
-              <span>Points ({sorted.length})</span>
-              {pointsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-            {pointsExpanded && <div className="space-y-2">
-              {sorted.map((pt, i) => (
-                <div key={pt.id} className="flex items-start gap-2">
-                  <div className="flex flex-col items-center flex-shrink-0">
-                    <div className={cn(
-                      'w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold',
-                      pt.type === 'start' ? 'bg-green-500' :
-                      pt.type === 'poi' ? 'bg-yellow-500' :
-                      pt.type === 'destination' ? 'bg-red-500' : 'bg-blue-500'
-                    )}>
-                      {pt.icon ?? (i + 1)}
-                    </div>
-                    {i < sorted.length - 1 && <div className="w-px h-3 bg-border mt-0.5" />}
-                  </div>
-                  <div className="min-w-0 flex-1 pb-1">
-                    <p className="text-xs font-medium truncate">{pt.label}</p>
-                    {pt.category && <p className="text-[10px] text-muted-foreground capitalize">{pt.category}</p>}
-                    <p className="text-[10px] font-mono text-muted-foreground">
-                      {pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}
-                    </p>
-                    {pt.note && <p className="text-[10px] text-muted-foreground italic mt-0.5">{pt.note}</p>}
-                  </div>
+          {isMainRoute ? (
+            <section>
+              <button
+                onClick={() => setPointsExpanded(v => !v)}
+                className="flex items-center justify-between w-full text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5" />
+                  Sub-Routes ({subRoutes.length})
+                </span>
+                {pointsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              {pointsExpanded && (
+                <div className="space-y-2">
+                  {subRoutes.map((sub, i) => (
+                    <button
+                      key={sub.id}
+                      onClick={() => selectRoute(sub.id)}
+                      className="w-full flex items-start gap-2 p-2 rounded-md hover:bg-accent text-left"
+                    >
+                      <div className="flex flex-col items-center flex-shrink-0">
+                        <div
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold"
+                          style={{ backgroundColor: sub.color }}
+                        >
+                          {i + 1}
+                        </div>
+                        {i < subRoutes.length - 1 && <div className="w-px h-3 bg-border mt-0.5" />}
+                      </div>
+                      <div className="min-w-0 flex-1 pb-1">
+                        <p className="text-xs font-medium truncate">{sub.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{sub.points.length} pts</p>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>}
-          </section>
+              )}
+            </section>
+          ) : (
+            <section>
+              <button
+                onClick={() => setPointsExpanded(v => !v)}
+                className="flex items-center justify-between w-full text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 hover:text-foreground transition-colors"
+              >
+                <span>Points ({sorted.length})</span>
+                {pointsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              {pointsExpanded && <div className="space-y-2">
+                {sorted.map((pt, i) => (
+                  <div key={pt.id} className="flex items-start gap-2">
+                    <div className="flex flex-col items-center flex-shrink-0">
+                      <div className={cn(
+                        'w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold',
+                        pt.type === 'start' ? 'bg-green-500' :
+                        pt.type === 'poi' ? 'bg-yellow-500' :
+                        pt.type === 'destination' ? 'bg-red-500' : 'bg-blue-500'
+                      )}>
+                        {pt.icon ?? (i + 1)}
+                      </div>
+                      {i < sorted.length - 1 && <div className="w-px h-3 bg-border mt-0.5" />}
+                    </div>
+                    <div className="min-w-0 flex-1 pb-1">
+                      <p className="text-xs font-medium truncate">{pt.label}</p>
+                      {pt.category && <p className="text-[10px] text-muted-foreground capitalize">{pt.category}</p>}
+                      <p className="text-[10px] font-mono text-muted-foreground">
+                        {pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}
+                      </p>
+                      {pt.note && <p className="text-[10px] text-muted-foreground italic mt-0.5">{pt.note}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>}
+            </section>
+          )}
 
           <Separator />
 
@@ -567,7 +686,7 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
 
 export default function AdminPage() {
   const { editKey, setEditKey, clearKeys } = useAuthStore();
-  const { mode, selectedRouteId, editingRouteId, resetBuilder, setMode } = useRouteBuilderStore();
+  const { mode, selectedRouteId, editingRouteId, builderMode, resetBuilder, setMode } = useRouteBuilderStore();
 
   const handleAuth = (key: string) => setEditKey(key);
   const handleLogout = () => {
@@ -592,7 +711,8 @@ export default function AdminPage() {
 
       {showRight && (
         <div className="h-full flex-shrink-0">
-          {showBuilder && <RouteBuilder />}
+          {showBuilder && builderMode === 'sub' && <RouteBuilder />}
+          {showBuilder && builderMode === 'main' && <MainRouteBuilder />}
           {showDetail && <AdminRouteDetail editKey={editKey} />}
         </div>
       )}

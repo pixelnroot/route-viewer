@@ -3,14 +3,16 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { RoutePoint, RouteMeta, SavedRoute, PointType, Category } from '@/types/routes';
+import type { RoutePoint, RouteMeta, SavedRoute, PointType, Category, RouteType } from '@/types/routes';
 
 type AppMode = 'view' | 'create';
 type BuilderTool = 'draw_path' | 'add_poi';
+type BuilderMode = 'sub' | 'main';
 
 interface RouteBuilderState {
   // app mode
   mode: AppMode;
+  builderMode: BuilderMode;
   builderTool: BuilderTool;
 
   // builder state
@@ -29,6 +31,17 @@ interface RouteBuilderState {
   // edit mode
   editingRouteId: string | null;
   loadRouteForEdit: (route: SavedRoute) => void;
+  loadMainRouteForEdit: (route: SavedRoute) => void;
+
+  // main route builder
+  mainRouteSubRouteIds: string[];
+  mainRouteMeta: Partial<RouteMeta>;
+  setBuilderMode: (mode: BuilderMode) => void;
+  setMainRouteMeta: (patch: Partial<RouteMeta>) => void;
+  addSubRouteToMain: (id: string) => void;
+  removeSubRouteFromMain: (id: string) => void;
+  reorderMainSubRoutes: (orderedIds: string[]) => void;
+  resetMainBuilder: () => void;
 
   // map fly-to trigger
   pendingFlyTo: { lat: number; lng: number } | null;
@@ -112,6 +125,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
   persist(
     (set, get) => ({
       mode: 'view',
+      builderMode: 'sub' as BuilderMode,
       builderTool: 'draw_path',
       points: [],
       meta: { ...DEFAULT_META },
@@ -123,6 +137,8 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       savedRoutes: [],
       selectedRouteId: null,
       editingRouteId: null,
+      mainRouteSubRouteIds: [],
+      mainRouteMeta: { ...DEFAULT_META },
       categories: [],
       categoryFilter: null,
       showCheckposts: true,
@@ -132,6 +148,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       clickedCoord: null,
 
       setMode: (mode) => set({ mode }),
+      setBuilderMode: (mode) => set({ builderMode: mode }),
       setBuilderTool: (tool) => set({ builderTool: tool }),
 
       flyTo: (lat, lng) => set({ pendingFlyTo: { lat, lng } }),
@@ -141,6 +158,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       loadRouteForEdit: (route) =>
         set({
           mode: 'create',
+          builderMode: 'sub',
           editingRouteId: route.id,
           points: route.points,
           meta: {
@@ -158,6 +176,46 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
           routeIsFallback: false,
           generateError: null,
           builderTool: 'draw_path',
+        }),
+
+      loadMainRouteForEdit: (route) =>
+        set({
+          mode: 'create',
+          builderMode: 'main',
+          editingRouteId: route.id,
+          mainRouteSubRouteIds: route.sub_route_ids ?? [],
+          mainRouteMeta: {
+            name: route.name,
+            description: route.description,
+            color: route.color,
+            status: route.status,
+            risk_level: route.risk_level,
+            travel_mode: route.travel_mode,
+            category_id: route.category_id,
+          },
+        }),
+
+      setMainRouteMeta: (patch) =>
+        set((s) => ({ mainRouteMeta: { ...s.mainRouteMeta, ...patch } })),
+
+      addSubRouteToMain: (id) =>
+        set((s) => ({
+          mainRouteSubRouteIds: s.mainRouteSubRouteIds.includes(id)
+            ? s.mainRouteSubRouteIds
+            : [...s.mainRouteSubRouteIds, id],
+        })),
+
+      removeSubRouteFromMain: (id) =>
+        set((s) => ({
+          mainRouteSubRouteIds: s.mainRouteSubRouteIds.filter((rid) => rid !== id),
+        })),
+
+      reorderMainSubRoutes: (orderedIds) => set({ mainRouteSubRouteIds: orderedIds }),
+
+      resetMainBuilder: () =>
+        set({
+          mainRouteSubRouteIds: [],
+          mainRouteMeta: { ...DEFAULT_META },
         }),
 
       addPoint: (point) =>
@@ -264,9 +322,12 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
           isGenerating: false,
           generateError: null,
           builderTool: 'draw_path',
+          builderMode: 'sub',
           routeIsFallback: false,
           pendingFlyTo: null,
           editingRouteId: null,
+          mainRouteSubRouteIds: [],
+          mainRouteMeta: { ...DEFAULT_META },
         }),
     }),
     {

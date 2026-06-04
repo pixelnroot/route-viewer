@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import {
   Lock, MapPin, ChevronLeft, ChevronRight, Navigation,
-  Copy, Check, Search, X,
+  Copy, Check, Search, X, Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -112,10 +112,17 @@ function RouteCard({
             {route.name}
           </p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-              <MapPin className="w-3 h-3" />
-              {route.points.length} points
-            </span>
+            {route.type === 'main' ? (
+              <span className="text-xs text-primary font-medium flex items-center gap-0.5">
+                <Layers className="w-3 h-3" />
+                {route.sub_route_ids?.length ?? 0} sub-routes
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                <MapPin className="w-3 h-3" />
+                {route.points.length} points
+              </span>
+            )}
             {category && (
               <span
                 className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
@@ -147,11 +154,16 @@ function RouteSidebar() {
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
 
   const filtered = useMemo(() => {
-    let routes = categoryFilter
-      ? savedRoutes.filter(r => r.category_id === categoryFilter)
-      : savedRoutes;
-    if (sidebarCheckpostFilter === 'with') routes = routes.filter(r => r.points.some(p => p.type === 'poi'));
-    if (sidebarCheckpostFilter === 'without') routes = routes.filter(r => !r.points.some(p => p.type === 'poi'));
+    const hasPoi = (r: SavedRoute) => {
+      return (r.sub_route_ids ?? []).some(id => {
+        const sub = savedRoutes.find(s => s.id === id);
+        return sub?.points.some(p => p.type === 'poi') ?? false;
+      });
+    };
+    let routes = savedRoutes.filter(r => r.type === 'main');
+    if (categoryFilter) routes = routes.filter(r => r.category_id === categoryFilter);
+    if (sidebarCheckpostFilter === 'with') routes = routes.filter(hasPoi);
+    if (sidebarCheckpostFilter === 'without') routes = routes.filter(r => !hasPoi(r));
     return routes;
   }, [savedRoutes, categoryFilter, sidebarCheckpostFilter]);
 
@@ -166,7 +178,7 @@ function RouteSidebar() {
           <ChevronRight className="w-4 h-4" />
         </button>
         <div className="flex-1 flex flex-col items-center gap-2 pt-2 overflow-hidden">
-          {savedRoutes.map(r => (
+          {savedRoutes.filter(r => r.type === 'main').map(r => (
             <button
               key={r.id}
               onClick={() => selectRoute(r.id)}
@@ -190,7 +202,7 @@ function RouteSidebar() {
         <div>
           <h2 className="font-bold text-sm text-foreground">Field Routes</h2>
           <p className="text-xs text-muted-foreground">
-            {savedRoutes.length} route{savedRoutes.length !== 1 ? 's' : ''}
+            {savedRoutes.filter(r => r.type === 'main').length} main route{savedRoutes.filter(r => r.type === 'main').length !== 1 ? 's' : ''}
           </p>
         </div>
         <button

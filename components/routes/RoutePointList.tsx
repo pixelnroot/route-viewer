@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -16,7 +16,10 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, ChevronDown, ChevronUp, ImagePlus, X, Loader2 } from 'lucide-react';
+import {
+  GripVertical, Trash2, ChevronDown, ChevronUp, ImagePlus, X,
+  Loader2, ArrowRight, Scissors, ChevronsDownUp, ChevronsUpDown,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,7 +30,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -55,16 +57,158 @@ const TYPE_LABELS: Record<PointType, string> = {
   destination: 'D',
 };
 
-function SortablePoint({ point, isLast }: { point: RoutePoint; isLast: boolean }) {
+function SortablePoint({
+  point, isLast, isFirst, collapseKey, collapseTarget,
+}: {
+  point: RoutePoint;
+  isLast: boolean;
+  isFirst: boolean;
+  collapseKey: number;
+  collapseTarget: boolean;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: point.id });
 
-  const { updatePoint, removePoint } = useRouteBuilderStore();
+  const {
+    updatePoint, removePoint,
+    savedRoutes, editingRouteId,
+    updateSavedRoute, addSavedRoute, loadRouteForEdit,
+  } = useRouteBuilderStore();
   const { editKey } = useAuthStore();
+
   const [expanded, setExpanded] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showMoveMenu, setShowMoveMenu] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [showSplitConfirm, setShowSplitConfirm] = useState(false);
+  const [splitMode, setSplitMode] = useState<'create' | 'move'>('create');
+  const [splitName, setSplitName] = useState('');
+  const [splitTargetId, setSplitTargetId] = useState('');
+  const [splitting, setSplitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync expand state when collapse-all / expand-all is triggered
+  useEffect(() => {
+    setExpanded(collapseTarget);
+  }, [collapseKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const otherSubRoutes = editingRouteId
+    ? savedRoutes.filter((r) => r.id !== editingRouteId && r.type !== 'main')
+    : [];
+  const isEditingSub = !!editingRouteId && savedRoutes.find((r) => r.id === editingRouteId)?.type !== 'main';
+
+  const handleMoveToRoute = async (targetRouteId: string) => {
+    if (!editingRouteId || !editKey) return;
+    setMoving(true);
+    setShowMoveMenu(false);
+
+    const { points: builderPoints } = useRouteBuilderStore.getState();
+    const newCurrentPoints = builderPoints
+      .filter((p) => p.id !== point.id)
+      .map((p, i) => ({ ...p, order: i }));
+
+    const targetRoute = savedRoutes.find((r) => r.id === targetRouteId);
+    if (!targetRoute) { setMoving(false); return; }
+    const newTargetPoints = [...targetRoute.points, { ...point, order: targetRoute.points.length }];
+
+    try {
+      const [r1, r2] = await Promise.all([
+        fetch(`/api/routes/${editingRouteId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editKey}` },
+          body: JSON.stringify({ points: newCurrentPoints, geometry: null }),
+        }).then((r) => (r.ok ? r.json() : Promise.reject(`${r.status}`))),
+        fetch(`/api/routes/${targetRouteId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editKey}` },
+          body: JSON.stringify({ points: newTargetPoints, geometry: null }),
+        }).then((r) => (r.ok ? r.json() : Promise.reject(`${r.status}`))),
+      ]);
+      updateSavedRoute(r1);
+      updateSavedRoute(r2);
+      removePoint(point.id);
+    } catch {
+      // silently fail
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  // Split: this point and all after leave current route; go to new sub-route OR existing one
+  const handleSplit = async () => {
+    if (!editingRouteId || !editKey) return;
+    setSplitting(true);
+
+    const { points: builderPoints } = useRouteBuilderStore.getState();
+    const idx = builderPoints.findIndex((p) => p.id === point.id);
+    if (idx <= 0) { setSplitting(false); return; }
+
+    const currentRoute = savedRoutes.find((r) => r.id === editingRouteId);
+    if (!currentRoute) { setSplitting(false); return; }
+
+    const keepPoints = builderPoints.slice(0, idx).map((p, i) => ({ ...p, order: i }));
+    const splitPoints = builderPoints.slice(idx).map((p, i) => ({ ...p, order: i }));
+
+    try {
+      if (splitMode === 'create') {
+        const newName = splitName.trim() || `${currentRoute.name} (split)`;
+        const [r1, r2] = await Promise.all([
+          fetch(`/api/routes/${editingRouteId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editKey}` },
+            body: JSON.stringify({ points: keepPoints, geometry: null }),
+          }).then((r) => (r.ok ? r.json() : Promise.reject(`${r.status}`))),
+          fetch('/api/routes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editKey}` },
+            body: JSON.stringify({
+              name: newName,
+              color: currentRoute.color,
+              description: '',
+              status: currentRoute.status ?? 'draft',
+              risk_level: currentRoute.risk_level ?? 'low',
+              travel_mode: currentRoute.travel_mode ?? 'driving',
+              category_id: currentRoute.category_id,
+              points: splitPoints,
+              geometry: null,
+            }),
+          }).then((r) => (r.ok ? r.json() : Promise.reject(`${r.status}`))),
+        ]);
+        updateSavedRoute(r1);
+        addSavedRoute(r2);
+        loadRouteForEdit(r1);
+      } else {
+        if (!splitTargetId) { setSplitting(false); return; }
+        const targetRoute = savedRoutes.find((r) => r.id === splitTargetId);
+        if (!targetRoute) { setSplitting(false); return; }
+        const appendedPoints = [
+          ...targetRoute.points,
+          ...splitPoints.map((p, i) => ({ ...p, order: targetRoute.points.length + i })),
+        ];
+        const [r1, r2] = await Promise.all([
+          fetch(`/api/routes/${editingRouteId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editKey}` },
+            body: JSON.stringify({ points: keepPoints, geometry: null }),
+          }).then((r) => (r.ok ? r.json() : Promise.reject(`${r.status}`))),
+          fetch(`/api/routes/${splitTargetId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editKey}` },
+            body: JSON.stringify({ points: appendedPoints, geometry: null }),
+          }).then((r) => (r.ok ? r.json() : Promise.reject(`${r.status}`))),
+        ]);
+        updateSavedRoute(r1);
+        updateSavedRoute(r2);
+        loadRouteForEdit(r1);
+      }
+      setShowSplitConfirm(false);
+    } catch {
+      // silently fail
+    } finally {
+      setSplitting(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -230,11 +374,10 @@ function SortablePoint({ point, isLast }: { point: RoutePoint; isLast: boolean }
                   />
                 </div>
               </div>
-
             </div>
           )}
 
-          {/* Segment routing mode (hidden for last point — no next segment) */}
+          {/* Segment routing mode */}
           {!isLast && (
             <div className="space-y-1 mt-2 pt-2 border-t border-border">
               <p className="text-[10px] text-muted-foreground font-medium">To next point:</p>
@@ -267,6 +410,132 @@ function SortablePoint({ point, isLast }: { point: RoutePoint; isLast: boolean }
             </div>
           )}
 
+          {/* Move to another sub-route */}
+          {isEditingSub && otherSubRoutes.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-border">
+              {showMoveMenu ? (
+                <div className="flex gap-1">
+                  <select
+                    className="flex-1 h-7 text-xs border border-border rounded bg-background px-1"
+                    onChange={(e) => { if (e.target.value) handleMoveToRoute(e.target.value); }}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Move to…</option>
+                    {otherSubRoutes.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setShowMoveMenu(false)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowMoveMenu(true)}
+                  disabled={moving}
+                  className="text-[10px] text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                >
+                  {moving ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <ArrowRight className="w-3 h-3" />
+                  )}
+                  Move to sub-route
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Split from here */}
+          {isEditingSub && !isFirst && (
+            <div className="mt-2 pt-2 border-t border-border">
+              {showSplitConfirm ? (
+                <div className="space-y-1.5">
+                  {/* Mode toggle */}
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setSplitMode('create')}
+                      className={cn(
+                        'flex-1 h-6 text-[10px] font-medium rounded border transition-colors',
+                        splitMode === 'create'
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'border-border text-muted-foreground hover:bg-accent'
+                      )}
+                    >
+                      New sub-route
+                    </button>
+                    <button
+                      onClick={() => setSplitMode('move')}
+                      disabled={otherSubRoutes.length === 0}
+                      className={cn(
+                        'flex-1 h-6 text-[10px] font-medium rounded border transition-colors disabled:opacity-40',
+                        splitMode === 'move'
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'border-border text-muted-foreground hover:bg-accent'
+                      )}
+                    >
+                      To existing
+                    </button>
+                  </div>
+
+                  {splitMode === 'create' ? (
+                    <Input
+                      value={splitName}
+                      onChange={(e) => setSplitName(e.target.value)}
+                      className="h-7 text-xs"
+                      placeholder={`${savedRoutes.find(r => r.id === editingRouteId)?.name ?? ''} (split)`}
+                      autoFocus
+                    />
+                  ) : (
+                    <select
+                      value={splitTargetId}
+                      onChange={(e) => setSplitTargetId(e.target.value)}
+                      className="w-full h-7 text-xs border border-border rounded bg-background px-1"
+                    >
+                      <option value="" disabled>Select sub-route…</option>
+                      {otherSubRoutes.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  <div className="flex gap-1">
+                    <button
+                      onClick={handleSplit}
+                      disabled={splitting || (splitMode === 'move' && !splitTargetId)}
+                      className="flex-1 h-7 text-[10px] font-medium rounded border bg-primary text-primary-foreground border-primary hover:opacity-90 flex items-center justify-center gap-1 transition-opacity disabled:opacity-50"
+                    >
+                      {splitting && <Loader2 className="w-3 h-3 animate-spin" />}
+                      {splitMode === 'create' ? 'Split' : 'Move'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowSplitConfirm(false);
+                        setSplitName('');
+                        setSplitTargetId('');
+                      }}
+                      className="flex-1 h-7 text-[10px] font-medium rounded border border-border text-muted-foreground hover:bg-accent transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowSplitConfirm(true)}
+                  className="text-[10px] text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                >
+                  <Scissors className="w-3 h-3" />
+                  Split from here
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Note + image */}
           <div className="space-y-1.5 mt-2 pt-2 border-t border-border">
             <Textarea
               value={point.note ?? ''}
@@ -275,7 +544,6 @@ function SortablePoint({ point, isLast }: { point: RoutePoint; isLast: boolean }
               placeholder="Note (optional)"
             />
 
-            {/* Image upload */}
             <input
               ref={fileInputRef}
               type="file"
@@ -322,9 +590,11 @@ function SortablePoint({ point, isLast }: { point: RoutePoint; isLast: boolean }
 }
 
 export default function RoutePointList() {
-  const { points, reorderPoints, addPointAtLatLng, meta } = useRouteBuilderStore();
+  const { points, reorderPoints, addPointAtLatLng } = useRouteBuilderStore();
   const [manualLat, setManualLat] = useState('');
   const [manualLng, setManualLng] = useState('');
+  const [collapseKey, setCollapseKey] = useState(0);
+  const [collapseExpanded, setCollapseExpanded] = useState(true);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -347,19 +617,45 @@ export default function RoutePointList() {
     setManualLng('');
   };
 
+  const toggleAll = () => {
+    const next = !collapseExpanded;
+    setCollapseExpanded(next);
+    setCollapseKey((k) => k + 1);
+  };
+
   return (
     <div className="space-y-3">
-      {points.length === 0 && (
+      {points.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-4">
           Click map to add route points, or enter coordinates below.
         </p>
+      ) : (
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-muted-foreground">{points.length} point{points.length !== 1 ? 's' : ''}</span>
+          <button
+            onClick={toggleAll}
+            className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+          >
+            {collapseExpanded
+              ? <><ChevronsDownUp className="w-3 h-3" /> Collapse All</>
+              : <><ChevronsUpDown className="w-3 h-3" /> Expand All</>
+            }
+          </button>
+        </div>
       )}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={points.map((p) => p.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1.5">
             {points.map((p, idx) => (
-              <SortablePoint key={p.id} point={p} isLast={idx === points.length - 1} />
+              <SortablePoint
+                key={p.id}
+                point={p}
+                isFirst={idx === 0}
+                isLast={idx === points.length - 1}
+                collapseKey={collapseKey}
+                collapseTarget={collapseExpanded}
+              />
             ))}
           </div>
         </SortableContext>

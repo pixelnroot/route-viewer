@@ -1,0 +1,270 @@
+'use client';
+
+import { useState } from 'react';
+import {
+  X, Layers, Save, Loader2, AlertCircle, Plus, Minus, GripVertical,
+} from 'lucide-react';
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import RouteColorPicker from './RouteColorPicker';
+import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
+import { useAuthStore } from '@/lib/store/auth-store';
+import type { SavedRoute } from '@/types/routes';
+
+function SortableSubRoute({
+  id, name, color, onRemove,
+}: { id: string; name: string; color: string; onRemove: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      className="flex items-center gap-2 bg-card border border-border rounded-md p-2"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="text-muted-foreground hover:text-foreground cursor-grab touch-none"
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+      <span className="text-sm flex-1 truncate">{name}</span>
+      <button onClick={onRemove} className="text-muted-foreground hover:text-destructive flex-shrink-0">
+        <Minus className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+export default function MainRouteBuilder() {
+  const {
+    savedRoutes, mainRouteSubRouteIds, mainRouteMeta, editingRouteId,
+    addSubRouteToMain, removeSubRouteFromMain, reorderMainSubRoutes,
+    setMainRouteMeta, setMode, addSavedRoute, updateSavedRoute,
+    selectRoute, resetMainBuilder, resetBuilder,
+  } = useRouteBuilderStore();
+  const { editKey, setEditKey } = useAuthStore();
+
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const subRoutes = savedRoutes.filter((r) => r.type !== 'main');
+  const selectedSubRoutes = mainRouteSubRouteIds
+    .map((id) => subRoutes.find((r) => r.id === id))
+    .filter(Boolean) as SavedRoute[];
+  const availableSubRoutes = subRoutes.filter((r) => !mainRouteSubRouteIds.includes(r.id));
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = mainRouteSubRouteIds.indexOf(active.id as string);
+    const newIdx = mainRouteSubRouteIds.indexOf(over.id as string);
+    reorderMainSubRoutes(arrayMove(mainRouteSubRouteIds, oldIdx, newIdx));
+  };
+
+  const canSave = mainRouteSubRouteIds.length >= 2 && mainRouteMeta.name?.trim();
+
+  const handleSave = async () => {
+    if (!canSave || !editKey) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const coords = selectedSubRoutes.flatMap(
+        (r) => (r.geometry?.coordinates ?? []) as [number, number][],
+      );
+      const combinedGeometry: GeoJSON.LineString | null =
+        coords.length > 0 ? { type: 'LineString', coordinates: coords } : null;
+
+      const body = {
+        type: 'main' as const,
+        sub_route_ids: mainRouteSubRouteIds,
+        name: mainRouteMeta.name!,
+        description: mainRouteMeta.description ?? '',
+        color: mainRouteMeta.color ?? '#3b82f6',
+        status: mainRouteMeta.status ?? 'draft',
+        risk_level: mainRouteMeta.risk_level ?? 'low',
+        travel_mode: mainRouteMeta.travel_mode ?? 'driving',
+        category_id: mainRouteMeta.category_id,
+        points: [],
+        geometry: combinedGeometry,
+      };
+
+      const isEdit = !!editingRouteId;
+      const url = isEdit ? `/api/routes/${editingRouteId}` : '/api/routes';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editKey}` },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) { setEditKey(''); throw new Error('Invalid key.'); }
+      if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+      const saved = await res.json();
+
+      if (isEdit) { updateSavedRoute(saved); selectRoute(saved.id); }
+      else { addSavedRoute(saved); }
+      resetMainBuilder();
+      resetBuilder();
+      setMode('view');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-background border-l border-border w-80">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Layers className="w-4 h-4 text-primary" />
+          <span className="font-semibold text-sm">
+            {editingRouteId ? 'Edit Main Route' : 'Create Main Route'}
+          </span>
+        </div>
+        <button
+          onClick={() => { resetMainBuilder(); resetBuilder(); setMode('view'); }}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-4 space-y-5">
+
+          {/* Selected sub-routes (ordered) */}
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Selected Sub-Routes ({selectedSubRoutes.length})
+            </p>
+            {selectedSubRoutes.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-3 border border-dashed border-border rounded-md">
+                Add sub-routes below. Need at least 2.
+              </p>
+            ) : (
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={mainRouteSubRouteIds} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-1.5">
+                    {selectedSubRoutes.map((r) => (
+                      <SortableSubRoute
+                        key={r.id}
+                        id={r.id}
+                        name={r.name}
+                        color={r.color}
+                        onRemove={() => removeSubRouteFromMain(r.id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
+          </section>
+
+          <Separator />
+
+          {/* Available sub-routes */}
+          <section className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Available Sub-Routes
+            </p>
+            {availableSubRoutes.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-3">
+                {subRoutes.length === 0
+                  ? 'No sub-routes yet. Create sub-routes first.'
+                  : 'All sub-routes added.'}
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {availableSubRoutes.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => addSubRouteToMain(r.id)}
+                    className="w-full flex items-center gap-2 p-2 rounded-md border border-border hover:bg-accent text-left transition-colors"
+                  >
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
+                    <span className="text-sm flex-1 truncate">{r.name}</span>
+                    <span className="text-xs text-muted-foreground">{r.points.length} pts</span>
+                    <Plus className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <Separator />
+
+          {/* Metadata */}
+          <section className="space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Main Route Details
+            </p>
+            <div className="space-y-1">
+              <Label className="text-xs">Name *</Label>
+              <Input
+                value={mainRouteMeta.name ?? ''}
+                onChange={(e) => setMainRouteMeta({ name: e.target.value })}
+                placeholder="Main route name"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Description</Label>
+              <Textarea
+                value={mainRouteMeta.description ?? ''}
+                onChange={(e) => setMainRouteMeta({ description: e.target.value })}
+                placeholder="Optional description"
+                className="text-sm min-h-[60px] resize-none"
+              />
+            </div>
+            <RouteColorPicker
+              value={mainRouteMeta.color ?? '#3b82f6'}
+              onChange={(c) => setMainRouteMeta({ color: c })}
+            />
+          </section>
+
+          {saveError && (
+            <div className="flex items-start gap-2 text-destructive text-xs bg-destructive/10 rounded-md p-2">
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              {saveError}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+
+      {/* Footer */}
+      <div className="px-4 py-3 border-t border-border flex-shrink-0">
+        <Button onClick={handleSave} disabled={!canSave || isSaving} className="w-full h-9">
+          {isSaving ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {editingRouteId ? 'Updating…' : 'Saving…'}
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4 mr-2" />
+              {editingRouteId ? 'Update Main Route' : 'Save Main Route'}
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
