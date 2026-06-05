@@ -27,14 +27,14 @@ export default function RouteColorPicker({ value, onChange }: RouteColorPickerPr
   return (
     <div className="space-y-2">
       <Label className="text-xs text-muted-foreground">Route Color</Label>
-      <div className="grid grid-cols-6 gap-1.5">
+      <div className="grid grid-cols-6 gap-2">
         {PRESET_COLORS.map((c) => (
           <button
             key={c}
             type="button"
             onClick={() => onChange(c)}
             className={cn(
-              'w-8 h-8 rounded-full border-2 transition-transform hover:scale-110',
+              'w-11 h-11 rounded-full border-2 transition-transform hover:scale-110 touch-manipulation',
               value === c ? 'border-white ring-2 ring-offset-1 ring-foreground' : 'border-transparent'
             )}
             style={{ backgroundColor: c }}
@@ -44,14 +44,14 @@ export default function RouteColorPicker({ value, onChange }: RouteColorPickerPr
       </div>
       <div className="flex items-center gap-2">
         <div
-          className="w-8 h-8 rounded-full border border-border flex-shrink-0"
+          className="w-11 h-11 rounded-full border border-border flex-shrink-0"
           style={{ backgroundColor: value }}
         />
         <Input
           placeholder="#hex"
           value={custom || value}
           onChange={(e) => handleCustomChange(e.target.value)}
-          className="h-8 text-xs font-mono"
+          className="h-11 text-sm font-mono"
           maxLength={7}
         />
       </div>

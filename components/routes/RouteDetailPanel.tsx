@@ -170,11 +170,11 @@ export default function RouteDetailPanel() {
 
         {/* Checkpost filter */}
         {mainHasCheckposts && (
-          <div className="px-4 py-2 border-b border-border flex-shrink-0 flex gap-1.5">
+          <div className="px-4 py-2.5 border-b border-border flex-shrink-0 flex gap-2">
             <button
               onClick={() => setShowCheckposts(true)}
               className={cn(
-                'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
+                'text-sm px-4 py-2 min-h-[44px] rounded-full border font-medium transition-colors touch-manipulation',
                 showCheckposts
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border text-muted-foreground hover:bg-accent'
@@ -185,13 +185,13 @@ export default function RouteDetailPanel() {
             <button
               onClick={() => setShowCheckposts(false)}
               className={cn(
-                'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
+                'text-sm px-4 py-2 min-h-[44px] rounded-full border font-medium transition-colors touch-manipulation',
                 !showCheckposts
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border text-muted-foreground hover:bg-accent'
               )}
             >
-              Without Checkpost
+              Without
             </button>
           </div>
         )}
@@ -202,7 +202,7 @@ export default function RouteDetailPanel() {
             <button
               onClick={() => setDetailTab('overview')}
               className={cn(
-                'flex-1 text-xs font-medium py-2 transition-colors',
+                'flex-1 text-sm font-semibold min-h-[48px] transition-colors',
                 detailTab === 'overview'
                   ? 'border-b-2 border-primary text-primary'
                   : 'text-muted-foreground hover:text-foreground'
@@ -213,13 +213,13 @@ export default function RouteDetailPanel() {
             <button
               onClick={() => setDetailTab('by-subroute')}
               className={cn(
-                'flex-1 text-xs font-medium py-2 transition-colors',
+                'flex-1 text-sm font-semibold min-h-[48px] transition-colors',
                 detailTab === 'by-subroute'
                   ? 'border-b-2 border-primary text-primary'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              By Sub-route ({subRoutes.length})
+              By Route ({subRoutes.length})
             </button>
           </div>
         )}
@@ -303,7 +303,7 @@ export default function RouteDetailPanel() {
               <button
                 onClick={() => goToPoint(presentationIdx - 1)}
                 disabled={presentationIdx === 0}
-                className="flex-1 h-9 flex items-center justify-center gap-1 rounded-md border border-border text-sm font-medium hover:bg-accent transition-colors disabled:opacity-40"
+                className="flex-1 h-12 flex items-center justify-center gap-1.5 rounded-xl border border-border text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-40 touch-manipulation"
               >
                 <ChevronLeft className="w-4 h-4" /> Prev
               </button>
@@ -312,19 +312,19 @@ export default function RouteDetailPanel() {
                 onClick={() => setAutoPlay(!autoPlay)}
                 title={autoPlay ? 'Pause' : 'Auto-advance every 3s'}
                 className={cn(
-                  'h-9 w-9 flex items-center justify-center rounded-md border transition-colors flex-shrink-0',
+                  'h-12 w-12 flex items-center justify-center rounded-xl border transition-colors flex-shrink-0 touch-manipulation',
                   autoPlay
                     ? 'bg-primary text-primary-foreground border-primary'
                     : 'border-border hover:bg-accent'
                 )}
               >
-                {autoPlay ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                {autoPlay ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
               </button>
 
               <button
                 onClick={() => goToPoint(presentationIdx + 1)}
                 disabled={presentationIdx === mainVisiblePoints.length - 1}
-                className="flex-1 h-9 flex items-center justify-center gap-1 rounded-md border border-border text-sm font-medium hover:bg-accent transition-colors disabled:opacity-40"
+                className="flex-1 h-12 flex items-center justify-center gap-1.5 rounded-xl border border-border text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-40 touch-manipulation"
               >
                 Next <ChevronRight className="w-4 h-4" />
               </button>
@@ -345,7 +345,7 @@ export default function RouteDetailPanel() {
                   <div className="px-3 pb-3 pt-1 space-y-2 border-t border-border">
                     {(directByPos.get('start') ?? []).filter(p => showCheckposts || p.type !== 'poi').map((pt, i) => (
                       <button key={pt.id} onClick={() => useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng)}
-                        className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-md px-1 py-0.5 transition-colors">
+                        className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-lg px-2 py-2 min-h-[48px] transition-colors touch-manipulation">
                         <div className={`w-5 h-5 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5`}>{i + 1}</div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
@@ -365,7 +365,7 @@ export default function RouteDetailPanel() {
                   <div key={sub.id} className="border border-border rounded-md overflow-hidden">
                     <button
                       onClick={() => setExpandedSubId(isOpen ? null : sub.id)}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 bg-card hover:bg-accent text-left transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-3.5 min-h-[52px] bg-card hover:bg-accent text-left transition-colors touch-manipulation"
                     >
                       <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: sub.color }} />
                       <span className="text-sm font-medium flex-1 truncate">{sub.name}</span>
@@ -377,14 +377,14 @@ export default function RouteDetailPanel() {
                         {subPts.length > 0 && (
                           <button
                             onClick={() => { const pt = subPts[0]; if (pt) useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng); }}
-                            className="flex items-center gap-1 text-xs text-primary hover:underline mt-1 mb-2"
+                            className="flex items-center gap-1.5 text-sm text-primary hover:underline mt-1 mb-2 min-h-[44px] touch-manipulation"
                           >
                             <MapPin className="w-3 h-3" /> Navigate to start
                           </button>
                         )}
                         {subPts.map((pt, i) => (
                           <button key={pt.id} onClick={() => useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng)}
-                            className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-md px-1 py-0.5 transition-colors">
+                            className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-lg px-2 py-2 min-h-[48px] transition-colors touch-manipulation">
                             <div className={`w-5 h-5 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5`}>{i + 1}</div>
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
@@ -397,7 +397,7 @@ export default function RouteDetailPanel() {
                             <p className="text-[10px] text-muted-foreground uppercase tracking-wide pt-1">Direct waypoints after this sub-route</p>
                             {afterPts.map((pt, i) => (
                               <button key={pt.id} onClick={() => useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng)}
-                                className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-md px-1 py-0.5 transition-colors">
+                                className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-lg px-2 py-2 min-h-[48px] transition-colors touch-manipulation">
                                 <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                                 <div className="min-w-0">
                                   <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
@@ -426,7 +426,7 @@ export default function RouteDetailPanel() {
                   <div className="px-3 pb-3 pt-1 space-y-2 border-t border-border">
                     {(directByPos.get('__end__') ?? []).filter(p => showCheckposts || p.type !== 'poi').map((pt, i) => (
                       <button key={pt.id} onClick={() => useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng)}
-                        className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-md px-1 py-0.5 transition-colors">
+                        className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-lg px-2 py-2 min-h-[48px] transition-colors touch-manipulation">
                         <div className={`w-5 h-5 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5`}>{i + 1}</div>
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
@@ -462,7 +462,7 @@ export default function RouteDetailPanel() {
                     const pt = mainVisiblePoints[0];
                     if (pt) useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng);
                   }}
-                  className="w-full flex items-center justify-center gap-2 h-9 rounded-md bg-primary/10 text-primary border border-primary/20 text-sm font-medium hover:bg-primary/20 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 h-12 rounded-xl bg-primary/10 text-primary border border-primary/20 text-base font-semibold hover:bg-primary/20 transition-colors touch-manipulation"
                 >
                   <PlayCircle className="w-4 h-4" />
                   Start Presentation
@@ -613,11 +613,11 @@ export default function RouteDetailPanel() {
 
       {/* Checkpost filter */}
       {subHasCheckposts && (
-        <div className="px-4 py-2 border-b border-border flex-shrink-0 flex gap-1.5">
+        <div className="px-4 py-2.5 border-b border-border flex-shrink-0 flex gap-2">
           <button
             onClick={() => setShowCheckposts(true)}
             className={cn(
-              'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
+              'text-sm px-4 py-2 min-h-[44px] rounded-full border font-medium transition-colors touch-manipulation',
               showCheckposts
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'border-border text-muted-foreground hover:bg-accent'
@@ -628,13 +628,13 @@ export default function RouteDetailPanel() {
           <button
             onClick={() => setShowCheckposts(false)}
             className={cn(
-              'text-xs px-3 py-1 rounded-full border font-medium transition-colors',
+              'text-sm px-4 py-2 min-h-[44px] rounded-full border font-medium transition-colors touch-manipulation',
               !showCheckposts
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'border-border text-muted-foreground hover:bg-accent'
             )}
           >
-            Without Checkpost
+            Without
           </button>
         </div>
       )}

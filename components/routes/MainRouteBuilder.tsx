@@ -32,19 +32,22 @@ function SortableSubRoute({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
-      className="flex items-center gap-2 bg-card border border-border rounded-md p-2"
+      className="flex items-center gap-2 bg-card border border-border rounded-lg p-3 min-h-[52px]"
     >
       <button
         {...attributes}
         {...listeners}
-        className="text-muted-foreground hover:text-foreground cursor-grab touch-none"
+        className="text-muted-foreground hover:text-foreground cursor-grab touch-none min-w-[44px] min-h-[44px] flex items-center justify-center -ml-1"
       >
-        <GripVertical className="w-4 h-4" />
+        <GripVertical className="w-5 h-5" />
       </button>
-      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-      <span className="text-sm flex-1 truncate">{name}</span>
-      <button onClick={onRemove} className="text-muted-foreground hover:text-destructive flex-shrink-0">
-        <Minus className="w-3.5 h-3.5" />
+      <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+      <span className="text-sm font-medium flex-1 truncate">{name}</span>
+      <button
+        onClick={onRemove}
+        className="text-muted-foreground hover:text-destructive flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center -mr-1"
+      >
+        <Minus className="w-4 h-4" />
       </button>
     </div>
   );
@@ -240,12 +243,12 @@ export default function MainRouteBuilder() {
                   <button
                     key={r.id}
                     onClick={() => addSubRouteToMain(r.id)}
-                    className="w-full flex items-center gap-2 p-2 rounded-md border border-border hover:bg-accent text-left transition-colors"
+                    className="w-full flex items-center gap-3 p-3.5 min-h-[52px] rounded-lg border border-border hover:bg-accent active:scale-[0.98] text-left transition-colors touch-manipulation"
                   >
-                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
-                    <span className="text-sm flex-1 truncate">{r.name}</span>
+                    <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
+                    <span className="text-sm font-medium flex-1 truncate">{r.name}</span>
                     <span className="text-xs text-muted-foreground">{r.points.length} pts</span>
-                    <Plus className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    <Plus className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                   </button>
                 ))}
               </div>
@@ -299,17 +302,17 @@ export default function MainRouteBuilder() {
             )}
 
             {showAddPoint && (
-              <div className="border border-border rounded-md p-3 space-y-2 bg-card">
+              <div className="border border-border rounded-xl p-4 space-y-3 bg-card">
                 <Input
                   placeholder="Label *"
                   value={newPtLabel}
                   onChange={(e) => setNewPtLabel(e.target.value)}
-                  className="h-8 text-sm"
+                  className="h-11 text-sm touch-manipulation"
                 />
                 <select
                   value={newPtType}
                   onChange={(e) => setNewPtType(e.target.value as PointType)}
-                  className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
+                  className="w-full h-11 text-sm rounded-lg border border-input bg-background px-3 touch-manipulation"
                 >
                   <option value="waypoint">Waypoint</option>
                   <option value="poi">POI / Checkpost</option>
@@ -319,7 +322,7 @@ export default function MainRouteBuilder() {
                 <select
                   value={newPtPosition}
                   onChange={(e) => setNewPtPosition(e.target.value)}
-                  className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
+                  className="w-full h-11 text-sm rounded-lg border border-input bg-background px-3 touch-manipulation"
                 >
                   <option value="">At the end</option>
                   <option value="start">Before all sub-routes</option>
@@ -332,25 +335,27 @@ export default function MainRouteBuilder() {
                     placeholder="Latitude"
                     type="number"
                     step="any"
+                    inputMode="decimal"
                     value={newPtLat}
                     onChange={(e) => setNewPtLat(e.target.value)}
-                    className="h-8 text-sm flex-1"
+                    className="h-11 text-sm flex-1 touch-manipulation"
                   />
                   <Input
                     placeholder="Longitude"
                     type="number"
                     step="any"
+                    inputMode="decimal"
                     value={newPtLng}
                     onChange={(e) => setNewPtLng(e.target.value)}
-                    className="h-8 text-sm flex-1"
+                    className="h-11 text-sm flex-1 touch-manipulation"
                   />
                 </div>
                 {clickedCoord && (
                   <button
                     onClick={() => { setNewPtLat(String(clickedCoord.lat)); setNewPtLng(String(clickedCoord.lng)); }}
-                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                    className="text-sm text-primary hover:underline flex items-center gap-1.5 min-h-[44px] touch-manipulation"
                   >
-                    <MapPin className="w-3 h-3" />
+                    <MapPin className="w-4 h-4" />
                     Use map click ({clickedCoord.lat.toFixed(4)}, {clickedCoord.lng.toFixed(4)})
                   </button>
                 )}
@@ -358,11 +363,11 @@ export default function MainRouteBuilder() {
                   placeholder="Note (optional)"
                   value={newPtNote}
                   onChange={(e) => setNewPtNote(e.target.value)}
-                  className="h-8 text-sm"
+                  className="h-11 text-sm touch-manipulation"
                 />
                 <div className="flex gap-2">
-                  <Button onClick={addManualPoint} className="flex-1 h-8 text-xs">Add Point</Button>
-                  <Button variant="outline" onClick={() => setShowAddPoint(false)} className="flex-1 h-8 text-xs">Cancel</Button>
+                  <Button onClick={addManualPoint} className="flex-1 h-12 text-base">Add Point</Button>
+                  <Button variant="outline" onClick={() => setShowAddPoint(false)} className="flex-1 h-12 text-base">Cancel</Button>
                 </div>
               </div>
             )}
@@ -387,7 +392,7 @@ export default function MainRouteBuilder() {
                 value={mainRouteMeta.name ?? ''}
                 onChange={(e) => setMainRouteMeta({ name: e.target.value })}
                 placeholder="Main route name"
-                className="h-8 text-sm"
+                className="h-11 text-sm touch-manipulation"
               />
             </div>
             <div className="space-y-1">
@@ -416,7 +421,7 @@ export default function MainRouteBuilder() {
 
       {/* Footer */}
       <div className="px-4 py-3 border-t border-border flex-shrink-0">
-        <Button onClick={handleSave} disabled={!canSave || isSaving} className="w-full h-9">
+        <Button onClick={handleSave} disabled={!canSave || isSaving} className="w-full h-12 text-base">
           {isSaving ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />

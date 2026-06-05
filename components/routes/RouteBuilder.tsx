@@ -224,32 +224,33 @@ export default function RouteBuilder() {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Add by Coordinate
             </p>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5">
               <Input
                 value={coordInput}
                 onChange={(e) => { setCoordInput(e.target.value); setCoordError(null); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddCoord(); }}
                 placeholder="lat, lng — e.g. 21.51, 92.16"
-                className="h-8 text-xs flex-1"
+                className="h-11 text-sm flex-1 touch-manipulation"
+                inputMode="decimal"
               />
               <Button
                 size="sm"
                 variant="outline"
-                className="h-8 w-8 p-0 flex-shrink-0"
+                className="h-11 w-11 p-0 flex-shrink-0"
                 onClick={handleFlyToCoord}
                 disabled={!parsedCoord}
                 title="Fly to coordinate"
               >
-                <Navigation className="w-3.5 h-3.5" />
+                <Navigation className="w-4 h-4" />
               </Button>
               <Button
                 size="sm"
-                className="h-8 w-8 p-0 flex-shrink-0"
+                className="h-11 w-11 p-0 flex-shrink-0"
                 onClick={handleAddCoord}
                 disabled={!parsedCoord}
                 title="Add as route point"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4" />
               </Button>
             </div>
             {coordError && (
@@ -308,21 +309,19 @@ export default function RouteBuilder() {
             <div className="grid grid-cols-2 gap-2">
               <Button
                 variant={builderTool === 'draw_path' ? 'default' : 'outline'}
-                size="sm"
-                className="h-8 text-xs"
+                className="h-11 text-sm"
                 onClick={() => setBuilderTool('draw_path')}
               >
-                <Route className="w-3.5 h-3.5 mr-1.5" />
+                <Route className="w-4 h-4 mr-2" />
                 Draw Path
               </Button>
               <Button
                 variant={builderTool === 'add_poi' ? 'default' : 'outline'}
-                size="sm"
-                className="h-8 text-xs"
+                className="h-11 text-sm"
                 onClick={() => setBuilderTool('add_poi')}
               >
-                <MapPin className="w-3.5 h-3.5 mr-1.5" />
-                Add Checkpost
+                <MapPin className="w-4 h-4 mr-2" />
+                Checkpost
               </Button>
             </div>
           </section>
@@ -358,7 +357,7 @@ export default function RouteBuilder() {
                 value={meta.name ?? ''}
                 onChange={(e) => setMeta({ name: e.target.value })}
                 placeholder="Route name"
-                className="h-8 text-sm"
+                className="h-11 text-sm touch-manipulation"
               />
             </div>
 
@@ -455,7 +454,7 @@ export default function RouteBuilder() {
         <Button
           onClick={handleGenerate}
           disabled={!canGenerate || isGenerating}
-          className="w-full h-9"
+          className="w-full h-12 text-base"
           variant="outline"
         >
           {isGenerating ? (
@@ -474,7 +473,7 @@ export default function RouteBuilder() {
         <Button
           onClick={handleSave}
           disabled={!canSave || isSaving}
-          className="w-full h-9"
+          className="w-full h-12 text-base"
         >
           {isSaving ? (
             <>
