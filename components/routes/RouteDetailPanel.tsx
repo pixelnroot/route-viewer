@@ -317,7 +317,7 @@ export default function RouteDetailPanel() {
                         className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-lg px-2 py-2 min-h-[48px] transition-colors touch-manipulation">
                         <div className={`w-5 h-5 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5`}>{i + 1}</div>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
+                          <p className="text-sm font-medium text-foreground truncate" title={pt.label}>{pt.label}</p>
                           <p className="text-xs text-muted-foreground font-mono">{pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}</p>
                         </div>
                       </button>
@@ -337,7 +337,7 @@ export default function RouteDetailPanel() {
                       className="w-full flex items-center gap-2 px-3 py-3.5 min-h-[52px] bg-card hover:bg-accent text-left transition-colors touch-manipulation"
                     >
                       <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: sub.color }} />
-                      <span className="text-sm font-medium flex-1 truncate">{sub.name}</span>
+                      <span className="text-sm font-medium flex-1 truncate" title={sub.name}>{sub.name}</span>
                       <span className="text-xs text-muted-foreground mr-1">{subPts.length} pts</span>
                       <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground transition-transform flex-shrink-0', isOpen && 'rotate-180')} />
                     </button>
@@ -356,7 +356,7 @@ export default function RouteDetailPanel() {
                             className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-lg px-2 py-2 min-h-[48px] transition-colors touch-manipulation">
                             <div className={`w-5 h-5 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5`}>{i + 1}</div>
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
+                              <p className="text-sm font-medium text-foreground truncate" title={pt.label}>{pt.label}</p>
                               <p className="text-xs text-muted-foreground font-mono">{pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}</p>
                             </div>
                           </button>
@@ -369,7 +369,7 @@ export default function RouteDetailPanel() {
                                 className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-lg px-2 py-2 min-h-[48px] transition-colors touch-manipulation">
                                 <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                                 <div className="min-w-0">
-                                  <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
+                                  <p className="text-sm font-medium text-foreground truncate" title={pt.label}>{pt.label}</p>
                                   <p className="text-xs text-muted-foreground font-mono">{pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}</p>
                                 </div>
                               </button>
@@ -398,7 +398,7 @@ export default function RouteDetailPanel() {
                         className="w-full flex items-start gap-2 text-left hover:bg-accent/40 rounded-lg px-2 py-2 min-h-[48px] transition-colors touch-manipulation">
                         <div className={`w-5 h-5 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5`}>{i + 1}</div>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">{pt.label}</p>
+                          <p className="text-sm font-medium text-foreground truncate" title={pt.label}>{pt.label}</p>
                           <p className="text-xs text-muted-foreground font-mono">{pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}</p>
                         </div>
                       </button>
