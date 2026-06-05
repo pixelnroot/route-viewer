@@ -125,30 +125,8 @@ function hasPopupContent(point: RoutePoint): boolean {
 
 type MapType = 'roadmap' | 'satellite' | 'terrain';
 
-function getDisplayGeometry(route: SavedRoute, allRoutes: SavedRoute[]): GeoJSON.LineString | null {
-  if (route.type !== 'main') return route.geometry;
-
-  // Build position-keyed map of direct waypoints
-  const directByPos = new globalThis.Map<string, [number, number][]>();
-  for (const pt of route.points ?? []) {
-    const key = pt.position_after ?? '__end__';
-    if (!directByPos.has(key)) directByPos.set(key, []);
-    directByPos.get(key)!.push([pt.lng, pt.lat]);
-  }
-
-  const coords: [number, number][] = [
-    ...(directByPos.get('start') ?? []),
-    ...(route.sub_route_ids ?? []).flatMap((id) => {
-      const sub = allRoutes.find((r) => r.id === id);
-      return [
-        ...((sub?.geometry?.coordinates ?? []) as [number, number][]),
-        ...(directByPos.get(id) ?? []),
-      ];
-    }),
-    ...(directByPos.get('__end__') ?? []),
-  ];
-
-  return coords.length > 0 ? { type: 'LineString', coordinates: coords } : null;
+function getDisplayGeometry(route: SavedRoute, _allRoutes: SavedRoute[]): GeoJSON.LineString | null {
+  return route.geometry ?? null;
 }
 
 function routeHasPoi(route: SavedRoute, allRoutes: SavedRoute[]): boolean {

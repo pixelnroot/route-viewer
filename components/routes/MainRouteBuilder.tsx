@@ -23,6 +23,7 @@ import RouteColorPicker from './RouteColorPicker';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import type { PointType, RoutePoint, SavedRoute } from '@/types/routes';
+import { fetchRouteGoogle } from '@/lib/routing/google-directions';
 
 function SortableSubRoute({
   id, name, color, onRemove,
@@ -130,11 +131,90 @@ export default function MainRouteBuilder() {
     setIsSaving(true);
     setSaveError(null);
     try {
-      const coords = selectedSubRoutes.flatMap(
-        (r) => (r.geometry?.coordinates ?? []) as [number, number][],
-      );
-      const combinedGeometry: GeoJSON.LineString | null =
-        coords.length > 0 ? { type: 'LineString', coordinates: coords } : null;
+      const travelMode = mainRouteMeta.travel_mode ?? 'driving';
+
+      const fetchSegment = async (
+        from: { lat: number; lng: number },
+        to: { lat: number; lng: number }
+      ): Promise<[number, number][]> => {
+        try {
+          const r = await fetchRouteGoogle(
+            [
+              { id: 'f', label: 'From', type: 'start' as const, lat: from.lat, lng: from.lng, order: 0 },
+              { id: 't', label: 'To', type: 'destination' as const, lat: to.lat, lng: to.lng, order: 1 },
+            ],
+            travelMode
+          );
+          return r.geometry.coordinates as [number, number][];
+        } catch {
+          return [[from.lng, from.lat], [to.lng, to.lat]];
+        }
+      };
+
+      let combinedGeometry: GeoJSON.LineString | null = null;
+
+      if (manualPoints.length === 0) {
+        const coords = selectedSubRoutes.flatMap(
+          (r) => (r.geometry?.coordinates ?? []) as [number, number][]
+        );
+        combinedGeometry = coords.length > 0 ? { type: 'LineString', coordinates: coords } : null;
+      } else {
+        const directByPos = new globalThis.Map<string, RoutePoint[]>();
+        for (const pt of manualPoints) {
+          const key = pt.position_after ?? '__end__';
+          if (!directByPos.has(key)) directByPos.set(key, []);
+          directByPos.get(key)!.push(pt);
+        }
+
+        const allCoords: [number, number][] = [];
+        const lastC = (): { lat: number; lng: number } | null => {
+          if (!allCoords.length) return null;
+          const c = allCoords[allCoords.length - 1];
+          return { lat: c[1], lng: c[0] };
+        };
+        const appendRouted = async (to: { lat: number; lng: number }) => {
+          const from = lastC();
+          if (!from) { allCoords.push([to.lng, to.lat]); return; }
+          const coords = await fetchSegment(from, to);
+          allCoords.push(...coords.slice(1));
+        };
+
+        for (const pt of directByPos.get('start') ?? []) {
+          await appendRouted({ lat: pt.lat, lng: pt.lng });
+        }
+
+        let lastWasWaypoint = (directByPos.get('start') ?? []).length > 0;
+
+        for (let i = 0; i < selectedSubRoutes.length; i++) {
+          const sub = selectedSubRoutes[i];
+          const subCoords = (sub.geometry?.coordinates ?? []) as [number, number][];
+          if (!subCoords.length) { lastWasWaypoint = false; continue; }
+
+          if (!allCoords.length) {
+            allCoords.push(...subCoords);
+          } else if (lastWasWaypoint) {
+            const from = lastC()!;
+            const subFirst = { lat: subCoords[0][1], lng: subCoords[0][0] };
+            const bridge = await fetchSegment(from, subFirst);
+            allCoords.push(...bridge.slice(1));
+            allCoords.push(...subCoords.slice(1));
+          } else {
+            allCoords.push(...subCoords);
+          }
+
+          const afterPts = directByPos.get(sub.id) ?? [];
+          for (const pt of afterPts) {
+            await appendRouted({ lat: pt.lat, lng: pt.lng });
+          }
+          lastWasWaypoint = afterPts.length > 0;
+        }
+
+        for (const pt of directByPos.get('__end__') ?? []) {
+          await appendRouted({ lat: pt.lat, lng: pt.lng });
+        }
+
+        combinedGeometry = allCoords.length > 0 ? { type: 'LineString', coordinates: allCoords } : null;
+      }
 
       const body = {
         type: 'main' as const,
@@ -425,7 +505,9 @@ export default function MainRouteBuilder() {
           {isSaving ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              {editingRouteId ? 'Updating…' : 'Saving…'}
+              {manualPoints.length > 0
+                ? 'Routing & Saving…'
+                : editingRouteId ? 'Updating…' : 'Saving…'}
             </>
           ) : (
             <>
