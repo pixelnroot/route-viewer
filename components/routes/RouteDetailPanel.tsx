@@ -95,10 +95,7 @@ export default function RouteDetailPanel() {
     ...(directByPos.get('__end__') ?? []),
   ];
 
-  const mainHasCheckposts = mainPointsWithSource.some((p) => p.type === 'poi');
-  const mainVisiblePoints = showCheckposts
-    ? mainPointsWithSource
-    : mainPointsWithSource.filter((p) => p.type !== 'poi');
+  const mainVisiblePoints = mainPointsWithSource;
 
   useEffect(() => {
     setPresentationActive(false);
@@ -167,34 +164,6 @@ export default function RouteDetailPanel() {
             </button>
           </div>
         </div>
-
-        {/* Checkpost filter */}
-        {mainHasCheckposts && (
-          <div className="px-4 py-2.5 border-b border-border flex-shrink-0 flex gap-2">
-            <button
-              onClick={() => setShowCheckposts(true)}
-              className={cn(
-                'text-sm px-4 py-2 min-h-[44px] rounded-full border font-medium transition-colors touch-manipulation',
-                showCheckposts
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'border-border text-muted-foreground hover:bg-accent'
-              )}
-            >
-              With Checkpost
-            </button>
-            <button
-              onClick={() => setShowCheckposts(false)}
-              className={cn(
-                'text-sm px-4 py-2 min-h-[44px] rounded-full border font-medium transition-colors touch-manipulation',
-                !showCheckposts
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'border-border text-muted-foreground hover:bg-accent'
-              )}
-            >
-              Without
-            </button>
-          </div>
-        )}
 
         {/* Tabs — only show when not in presentation */}
         {!presentationActive && (
@@ -473,8 +442,7 @@ export default function RouteDetailPanel() {
 
               <section>
                 <p className="text-sm font-bold text-foreground uppercase tracking-wider mb-3">
-                  Route Points ({mainVisiblePoints.length}
-                  {!showCheckposts && mainHasCheckposts ? ` of ${mainPointsWithSource.length}` : ''})
+                  Route Points ({mainPointsWithSource.length})
                 </p>
                 <div className="space-y-5">
                   {/* Direct waypoints before all sub-routes */}
