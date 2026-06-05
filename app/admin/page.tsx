@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import {
   Plus, Trash2, ChevronDown, ChevronUp, Tag,
-  LogOut, Shield, Route, Loader2, AlertCircle, Pencil, Layers,
+  LogOut, Shield, Route, Loader2, AlertCircle, Pencil, Layers, X, Menu, ChevronLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -117,26 +117,26 @@ function RouteCard({
 
   return (
     <div className={cn(
-      'rounded-md border p-2.5 transition-colors',
+      'rounded-xl border transition-colors',
       selected ? 'border-primary bg-accent' : 'border-border'
     )}>
-      <button onClick={onSelect} className="w-full text-left">
-        <div className="flex items-start gap-2">
-          <div className="w-3 h-3 rounded-full flex-shrink-0 mt-0.5" style={{ backgroundColor: route.color }} />
+      <button onClick={onSelect} className="w-full text-left p-3.5 min-h-[64px]">
+        <div className="flex items-start gap-3">
+          <div className="w-4 h-4 rounded-full flex-shrink-0 mt-0.5 shadow-sm" style={{ backgroundColor: route.color }} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium truncate">{route.name}</p>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <p className="text-sm font-semibold truncate">{route.name}</p>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
               {route.type === 'main' ? (
-                <span className="text-[10px] text-primary font-medium flex items-center gap-0.5">
-                  <Layers className="w-2.5 h-2.5" />
+                <span className="text-xs text-primary font-medium flex items-center gap-1">
+                  <Layers className="w-3 h-3" />
                   {route.sub_route_ids?.length ?? 0} sub-routes
                 </span>
               ) : (
-                <span className="text-[10px] text-muted-foreground">{route.points.length} pts</span>
+                <span className="text-xs text-muted-foreground">{route.points.length} pts</span>
               )}
               {category && (
                 <span
-                  className="text-[10px] font-medium px-1 rounded"
+                  className="text-xs font-medium px-1.5 py-0.5 rounded-full"
                   style={{ backgroundColor: category.color + '30', color: category.color }}
                 >
                   {category.name}
@@ -147,31 +147,33 @@ function RouteCard({
         </div>
       </button>
 
-      {!confirming ? (
-        <button
-          onClick={() => setConfirming(true)}
-          className="mt-1.5 text-[10px] text-muted-foreground hover:text-destructive flex items-center gap-1"
-        >
-          <Trash2 className="w-3 h-3" /> Delete
-        </button>
-      ) : (
-        <div className="mt-1.5 flex gap-1.5 items-center">
-          <span className="text-[10px] text-destructive font-medium">Confirm delete?</span>
+      <div className="px-3.5 pb-2.5">
+        {!confirming ? (
           <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="text-[10px] text-destructive font-bold hover:underline"
+            onClick={() => setConfirming(true)}
+            className="text-xs text-muted-foreground hover:text-destructive flex items-center gap-1.5 min-h-[36px]"
           >
-            {deleting ? '…' : 'Yes'}
+            <Trash2 className="w-3.5 h-3.5" /> Delete
           </button>
-          <button
-            onClick={() => setConfirming(false)}
-            className="text-[10px] text-muted-foreground hover:underline"
-          >
-            No
-          </button>
-        </div>
-      )}
+        ) : (
+          <div className="flex gap-2 items-center">
+            <span className="text-xs text-destructive font-medium">Delete?</span>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-sm text-destructive font-bold hover:underline min-h-[36px] px-1"
+            >
+              {deleting ? '…' : 'Yes'}
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              className="text-sm text-muted-foreground hover:underline min-h-[36px] px-1"
+            >
+              No
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -266,7 +268,7 @@ function CategoryManager({ editKey }: { editKey: string }) {
 
 // ── Admin sidebar ─────────────────────────────────────────────────────────────
 
-function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => void }) {
+function AdminSidebar({ editKey, onLogout, onClose }: { editKey: string; onLogout: () => void; onClose?: () => void }) {
   const {
     savedRoutes, selectedRouteId, mode, builderMode,
     categories, categoryFilter,
@@ -320,22 +322,39 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
 
   const isCreatingThisTab = mode === 'create' && builderMode === activeTab;
 
+  const handleCreate_ = () => { handleCreate(); onClose?.(); };
+  const handleCreateMain_ = () => { handleCreateMain(); onClose?.(); };
+
   return (
-    <div className="flex flex-col h-full bg-background border-r border-border w-72">
+    <div className={cn(
+      'flex flex-col h-full bg-background border-border',
+      onClose ? 'w-full' : 'w-72 border-r'
+    )}>
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border flex-shrink-0">
+      <div className="px-4 py-3.5 border-b border-border flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-primary" />
-            <span className="font-bold text-sm">Admin Panel</span>
+            <span className="font-bold text-base">Admin Panel</span>
           </div>
-          <button
-            onClick={onLogout}
-            className="text-muted-foreground hover:text-foreground"
-            title="Logout"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onLogout}
+              className="text-muted-foreground hover:text-foreground p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="text-muted-foreground hover:text-foreground p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -344,16 +363,16 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
         <button
           onClick={() => setActiveTab('sub')}
           className={cn(
-            'flex-1 py-2.5 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5',
+            'flex-1 py-3 text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 min-h-[48px]',
             activeTab === 'sub'
               ? 'text-foreground border-b-2 border-primary bg-accent/40'
               : 'text-muted-foreground hover:text-foreground hover:bg-accent/20'
           )}
         >
-          <Route className="w-3 h-3" />
+          <Route className="w-4 h-4" />
           Sub-Routes
           <span className={cn(
-            'text-[10px] px-1.5 py-0.5 rounded-full font-bold',
+            'text-xs px-1.5 py-0.5 rounded-full font-bold',
             activeTab === 'sub' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
           )}>
             {subCount}
@@ -362,16 +381,16 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
         <button
           onClick={() => setActiveTab('main')}
           className={cn(
-            'flex-1 py-2.5 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5',
+            'flex-1 py-3 text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 min-h-[48px]',
             activeTab === 'main'
               ? 'text-foreground border-b-2 border-primary bg-accent/40'
               : 'text-muted-foreground hover:text-foreground hover:bg-accent/20'
           )}
         >
-          <Layers className="w-3 h-3" />
+          <Layers className="w-4 h-4" />
           Main Routes
           <span className={cn(
-            'text-[10px] px-1.5 py-0.5 rounded-full font-bold',
+            'text-xs px-1.5 py-0.5 rounded-full font-bold',
             activeTab === 'main' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
           )}>
             {mainCount}
@@ -381,12 +400,12 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
 
       {/* Category filter chips */}
       {categories.length > 0 && (
-        <div className="px-3 py-2 flex-shrink-0 border-b border-border">
-          <div className="flex gap-1 flex-wrap">
+        <div className="px-3 py-2.5 flex-shrink-0 border-b border-border">
+          <div className="flex gap-1.5 flex-wrap">
             <button
               onClick={() => setCategoryFilter(null)}
               className={cn(
-                'text-[10px] px-2 py-0.5 rounded-full border font-medium transition-colors',
+                'text-sm px-3 py-1.5 rounded-full border font-medium transition-colors min-h-[36px]',
                 !categoryFilter
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border text-muted-foreground hover:bg-accent'
@@ -399,7 +418,7 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
                 key={cat.id}
                 onClick={() => setCategoryFilter(categoryFilter === cat.id ? null : cat.id)}
                 className={cn(
-                  'text-[10px] px-2 py-0.5 rounded-full border font-medium transition-colors',
+                  'text-sm px-3 py-1.5 rounded-full border font-medium transition-colors min-h-[36px]',
                   categoryFilter === cat.id
                     ? 'text-white border-transparent'
                     : 'border-border text-muted-foreground hover:bg-accent'
@@ -414,17 +433,16 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
       )}
 
       {/* Create button (tab-contextual) */}
-      <div className="px-3 py-2 flex-shrink-0">
+      <div className="px-3 py-2.5 flex-shrink-0">
         <Button
-          onClick={activeTab === 'sub' ? handleCreate : handleCreateMain}
-          size="sm"
-          className="w-full h-8 text-xs"
+          onClick={activeTab === 'sub' ? handleCreate_ : handleCreateMain_}
+          className="w-full h-11 text-sm"
           variant={isCreatingThisTab ? 'secondary' : 'default'}
         >
           {activeTab === 'sub' ? (
-            <><Route className="w-3.5 h-3.5 mr-1.5" />{isCreatingThisTab ? 'Creating Sub-Route…' : 'New Sub-Route'}</>
+            <><Route className="w-4 h-4 mr-2" />{isCreatingThisTab ? 'Creating Sub-Route…' : 'New Sub-Route'}</>
           ) : (
-            <><Layers className="w-3.5 h-3.5 mr-1.5" />{isCreatingThisTab ? 'Creating Main Route…' : 'New Main Route'}</>
+            <><Layers className="w-4 h-4 mr-2" />{isCreatingThisTab ? 'Creating Main Route…' : 'New Main Route'}</>
           )}
         </Button>
       </div>
@@ -484,7 +502,7 @@ function AdminSidebar({ editKey, onLogout }: { editKey: string; onLogout: () => 
 
 // ── Admin route detail (read + delete) ────────────────────────────────────────
 
-function AdminRouteDetail({ editKey }: { editKey: string }) {
+function AdminRouteDetail({ editKey, onClose }: { editKey: string; onClose?: () => void }) {
   const { selectedRouteId, savedRoutes, categories, selectRoute, removeSavedRoute, loadRouteForEdit, loadMainRouteForEdit } =
     useRouteBuilderStore();
   const route = savedRoutes.find((r) => r.id === selectedRouteId);
@@ -519,22 +537,28 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background border-l border-border w-80">
-      <div className="flex items-start justify-between px-4 py-3 border-b border-border flex-shrink-0">
-        <div className="flex items-start gap-2 min-w-0 flex-1 mr-2">
-          <div className="w-3 h-3 rounded-full flex-shrink-0 mt-0.5" style={{ backgroundColor: route.color }} />
-          <span className="font-semibold text-sm leading-snug">{route.name}</span>
+    <div className={cn(
+      'flex flex-col h-full bg-background border-border',
+      onClose ? 'w-full' : 'w-80 border-l'
+    )}>
+      <div className="flex items-start justify-between px-4 py-3.5 border-b border-border flex-shrink-0">
+        <div className="flex items-start gap-2.5 min-w-0 flex-1 mr-2">
+          <div className="w-4 h-4 rounded-full flex-shrink-0 mt-0.5 shadow-sm" style={{ backgroundColor: route.color }} />
+          <span className="font-semibold text-base leading-snug">{route.name}</span>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
-            onClick={() => isMainRoute ? loadMainRouteForEdit(route) : loadRouteForEdit(route)}
-            className="text-muted-foreground hover:text-primary"
+            onClick={() => { isMainRoute ? loadMainRouteForEdit(route) : loadRouteForEdit(route); onClose?.(); }}
+            className="text-muted-foreground hover:text-primary p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
             title="Edit route"
           >
-            <Pencil className="w-3.5 h-3.5" />
+            <Pencil className="w-4 h-4" />
           </button>
-          <button onClick={() => selectRoute(null)} className="text-muted-foreground hover:text-foreground">
-            ✕
+          <button
+            onClick={() => { selectRoute(null); onClose?.(); }}
+            className="text-muted-foreground hover:text-foreground p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -687,6 +711,8 @@ function AdminRouteDetail({ editKey }: { editKey: string }) {
 export default function AdminPage() {
   const { editKey, setEditKey, clearKeys } = useAuthStore();
   const { mode, selectedRouteId, editingRouteId, builderMode, resetBuilder, setMode } = useRouteBuilderStore();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileRightOpen, setMobileRightOpen] = useState(false);
 
   const handleAuth = (key: string) => setEditKey(key);
   const handleLogout = () => {
@@ -701,20 +727,85 @@ export default function AdminPage() {
   const showDetail = mode === 'view' && !!selectedRouteId && !editingRouteId;
   const showRight = showBuilder || showDetail;
 
+  const closeSidebar = () => setMobileSidebarOpen(false);
+  const closeRight = () => setMobileRightOpen(false);
+
   return (
     <div className="flex h-full w-full overflow-hidden">
-      <AdminSidebar editKey={editKey} onLogout={handleLogout} />
-
-      <div className="flex-1 relative">
-        <MapView />
+      {/* Desktop: left sidebar */}
+      <div className="hidden md:flex h-full flex-shrink-0">
+        <AdminSidebar editKey={editKey} onLogout={handleLogout} />
       </div>
 
+      {/* Map */}
+      <div className="flex-1 relative">
+        <MapView adminMode />
+
+        {/* Mobile: hamburger FAB */}
+        <button
+          onClick={() => setMobileSidebarOpen(true)}
+          className="md:hidden absolute top-3 left-3 z-20 bg-background/95 backdrop-blur-sm border border-border rounded-full p-3 shadow-lg min-h-[48px] min-w-[48px] flex items-center justify-center active:scale-95 transition-transform"
+          aria-label="Open admin menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        {/* Mobile: open builder/detail button when panel should be visible */}
+        {showRight && (
+          <button
+            onClick={() => setMobileRightOpen(true)}
+            className="md:hidden absolute bottom-6 right-4 z-20 bg-primary text-primary-foreground rounded-full px-5 py-3 shadow-xl flex items-center gap-2 text-sm font-semibold min-h-[48px] active:scale-95 transition-transform"
+          >
+            {showBuilder ? (
+              showDetail ? 'View Detail' : 'Edit Form'
+            ) : 'View Detail'}
+          </button>
+        )}
+      </div>
+
+      {/* Desktop: right panel */}
       {showRight && (
-        <div className="h-full flex-shrink-0">
+        <div className="hidden md:flex h-full flex-shrink-0">
           {showBuilder && builderMode === 'sub' && <RouteBuilder />}
           {showBuilder && builderMode === 'main' && <MainRouteBuilder />}
           {showDetail && <AdminRouteDetail editKey={editKey} />}
         </div>
+      )}
+
+      {/* Mobile: sidebar bottom sheet */}
+      {mobileSidebarOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+            onClick={closeSidebar}
+          />
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 h-[85vh] rounded-t-2xl overflow-hidden shadow-2xl flex flex-col bg-background">
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+              <div className="w-10 h-1.5 rounded-full bg-border" />
+            </div>
+            <AdminSidebar editKey={editKey} onLogout={handleLogout} onClose={closeSidebar} />
+          </div>
+        </>
+      )}
+
+      {/* Mobile: builder/detail bottom sheet */}
+      {showRight && mobileRightOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-black/30"
+            onClick={closeRight}
+          />
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 h-[88vh] rounded-t-2xl overflow-hidden shadow-2xl flex flex-col bg-background">
+            <div className="flex items-center justify-between px-4 pt-3 pb-1 flex-shrink-0">
+              <div className="w-10 h-1.5 rounded-full bg-border mx-auto" />
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              {showBuilder && builderMode === 'sub' && <RouteBuilder />}
+              {showBuilder && builderMode === 'main' && <MainRouteBuilder />}
+              {showDetail && <AdminRouteDetail editKey={editKey} onClose={closeRight} />}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

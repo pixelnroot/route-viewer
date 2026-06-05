@@ -127,10 +127,27 @@ type MapType = 'roadmap' | 'satellite' | 'terrain';
 
 function getDisplayGeometry(route: SavedRoute, allRoutes: SavedRoute[]): GeoJSON.LineString | null {
   if (route.type !== 'main') return route.geometry;
-  const coords = (route.sub_route_ids ?? []).flatMap((id) => {
-    const sub = allRoutes.find((r) => r.id === id);
-    return (sub?.geometry?.coordinates ?? []) as [number, number][];
-  });
+
+  // Build position-keyed map of direct waypoints
+  const directByPos = new globalThis.Map<string, [number, number][]>();
+  for (const pt of route.points ?? []) {
+    const key = pt.position_after ?? '__end__';
+    if (!directByPos.has(key)) directByPos.set(key, []);
+    directByPos.get(key)!.push([pt.lng, pt.lat]);
+  }
+
+  const coords: [number, number][] = [
+    ...(directByPos.get('start') ?? []),
+    ...(route.sub_route_ids ?? []).flatMap((id) => {
+      const sub = allRoutes.find((r) => r.id === id);
+      return [
+        ...((sub?.geometry?.coordinates ?? []) as [number, number][]),
+        ...(directByPos.get(id) ?? []),
+      ];
+    }),
+    ...(directByPos.get('__end__') ?? []),
+  ];
+
   return coords.length > 0 ? { type: 'LineString', coordinates: coords } : null;
 }
 
@@ -142,6 +159,21 @@ function routeHasPoi(route: SavedRoute, allRoutes: SavedRoute[]): boolean {
     });
   }
   return route.points.some((p) => p.type === 'poi');
+}
+
+function ptDistM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const aa =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+}
+
+function isBoundaryDuplicate(a: RoutePoint, b: RoutePoint): boolean {
+  return a.label.toLowerCase() === b.label.toLowerCase() || ptDistM(a, b) < 20;
 }
 
 // Point-to-segment distance check in meters (equirectangular approximation)
@@ -166,7 +198,7 @@ function isNearGeometry(lat: number, lng: number, geo: GeoJSON.LineString, thres
   return false;
 }
 
-export default function MapView() {
+export default function MapView({ adminMode = false }: { adminMode?: boolean }) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const polylinesRef = useRef<globalThis.Map<string, google.maps.Polyline>>(new globalThis.Map());
@@ -203,6 +235,8 @@ export default function MapView() {
 
   const visibleRoutes = savedRoutes.filter(r => {
     if (r.type !== 'main') return false;
+    // In admin mode: only draw the selected main route; everything else stays hidden
+    if (adminMode && r.id !== selectedRouteId) return false;
     if (categoryFilter && r.category_id !== categoryFilter) return false;
     const hasPoi = routeHasPoi(r, savedRoutes);
     if (sidebarCheckpostFilter === 'with' && !hasPoi) return false;
@@ -221,14 +255,23 @@ export default function MapView() {
           const pts = [...sel.points].sort((a, b) => a.order - b.order);
           return showCheckposts ? pts : pts.filter(p => p.type !== 'poi');
         }
-        // Main route: combine direct points + all sub-route points
-        const pts = [
-          ...(sel.points ?? []),
-          ...(sel.sub_route_ids ?? []).flatMap(id => {
-            const sub = savedRoutes.find(r => r.id === id);
-            return sub?.points ?? [];
-          }),
-        ];
+        // Main route: combine direct points + deduped sub-route points
+        const subIds = sel.sub_route_ids ?? [];
+        const subPtsDeduped: RoutePoint[] = [];
+        subIds.forEach((id, idx) => {
+          const sub = savedRoutes.find(r => r.id === id);
+          const pts = [...(sub?.points ?? [])].sort((a, b) => a.order - b.order);
+          if (idx > 0) {
+            const prevLast = subPtsDeduped[subPtsDeduped.length - 1];
+            const first = pts[0];
+            if (prevLast && first && isBoundaryDuplicate(prevLast, first)) {
+              subPtsDeduped.push(...pts.slice(1));
+              return;
+            }
+          }
+          subPtsDeduped.push(...pts);
+        });
+        const pts = [...(sel.points ?? []), ...subPtsDeduped];
         return showCheckposts ? pts : pts.filter(p => p.type !== 'poi');
       })();
 

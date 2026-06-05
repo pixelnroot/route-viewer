@@ -16,6 +16,21 @@ const POINT_TYPE_COLORS: Record<PointType, string> = {
   destination: 'bg-red-500',
 };
 
+function ptDistM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const aa =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+}
+
+function isBoundaryDuplicate(a: RoutePoint, b: RoutePoint): boolean {
+  return a.label.toLowerCase() === b.label.toLowerCase() || ptDistM(a, b) < 20;
+}
+
 interface PointWithSource extends RoutePoint {
   _subRouteName: string;
   _subRouteColor: string;
@@ -55,10 +70,25 @@ export default function RouteDetailPanel() {
     directByPos.get(key)!.push(pt);
   });
 
+  // Pre-sort each sub-route's points, deduplicating at boundaries between sub-routes
+  const sortedSubPoints = new Map<string, RoutePoint[]>();
+  subRoutes.forEach((sub, idx) => {
+    const pts = [...sub.points].sort((a, b) => a.order - b.order);
+    if (idx > 0) {
+      const prevPts = sortedSubPoints.get(subRoutes[idx - 1].id) ?? [];
+      const prevLast = prevPts[prevPts.length - 1];
+      if (prevLast && pts[0] && isBoundaryDuplicate(prevLast, pts[0])) {
+        sortedSubPoints.set(sub.id, pts.slice(1));
+        return;
+      }
+    }
+    sortedSubPoints.set(sub.id, pts);
+  });
+
   const mainPointsWithSource: PointWithSource[] = [
     ...(directByPos.get('start') ?? []),
     ...subRoutes.flatMap((sub) => [
-      ...[...sub.points].sort((a, b) => a.order - b.order)
+      ...(sortedSubPoints.get(sub.id) ?? [])
         .map((p) => ({ ...p, _subRouteName: sub.name, _subRouteColor: sub.color })),
       ...(directByPos.get(sub.id) ?? []),
     ]),
@@ -327,8 +357,7 @@ export default function RouteDetailPanel() {
                 </div>
               )}
               {subRoutes.map((sub) => {
-                const subPts = [...sub.points]
-                  .sort((a, b) => a.order - b.order)
+                const subPts = (sortedSubPoints.get(sub.id) ?? [])
                   .filter((p) => showCheckposts || p.type !== 'poi');
                 const afterPts = (directByPos.get(sub.id) ?? []).filter(p => showCheckposts || p.type !== 'poi');
                 const isOpen = expandedSubId === sub.id;
@@ -471,8 +500,7 @@ export default function RouteDetailPanel() {
                   )}
 
                   {subRoutes.map((sub) => {
-                    const subPoints = [...sub.points]
-                      .sort((a, b) => a.order - b.order)
+                    const subPoints = (sortedSubPoints.get(sub.id) ?? [])
                       .filter((p) => showCheckposts || p.type !== 'poi');
                     const afterPoints = (directByPos.get(sub.id) ?? []).filter(p => showCheckposts || p.type !== 'poi');
                     if (subPoints.length === 0 && afterPoints.length === 0) return null;

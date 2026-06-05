@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import {
   Lock, MapPin, ChevronLeft, ChevronRight, Navigation,
-  Copy, Check, Search, X, Layers,
+  Copy, Check, Search, X, Layers, Menu,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -93,39 +93,39 @@ function RouteCard({
     <button
       onClick={onClick}
       className={cn(
-        'w-full text-left rounded-lg border p-3 transition-all hover:shadow-sm',
+        'w-full text-left rounded-xl border p-4 transition-all hover:shadow-sm active:scale-[0.98] min-h-[72px]',
         selected
           ? 'border-primary bg-primary/5 shadow-sm'
           : 'border-border hover:border-primary/40 hover:bg-accent/50'
       )}
     >
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-3">
         <div
-          className="w-3 h-3 rounded-full flex-shrink-0 mt-1"
+          className="w-4 h-4 rounded-full flex-shrink-0 mt-0.5 shadow-sm"
           style={{ backgroundColor: route.color }}
         />
         <div className="min-w-0 flex-1">
           <p className={cn(
-            'text-sm font-semibold leading-snug',
+            'text-base font-semibold leading-snug',
             selected ? 'text-primary' : 'text-foreground'
           )}>
             {route.name}
           </p>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             {route.type === 'main' ? (
-              <span className="text-xs text-primary font-medium flex items-center gap-0.5">
-                <Layers className="w-3 h-3" />
+              <span className="text-sm text-primary font-medium flex items-center gap-1">
+                <Layers className="w-3.5 h-3.5" />
                 {route.sub_route_ids?.length ?? 0} sub-routes
               </span>
             ) : (
-              <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                <MapPin className="w-3 h-3" />
+              <span className="text-sm text-muted-foreground flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5" />
                 {route.points.length} points
               </span>
             )}
             {category && (
               <span
-                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                className="text-xs font-semibold px-2 py-0.5 rounded-full"
                 style={{ backgroundColor: category.color + '20', color: category.color }}
               >
                 {category.name}
@@ -133,9 +133,12 @@ function RouteCard({
             )}
           </div>
           {route.description && (
-            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{route.description}</p>
+            <p className="text-sm text-muted-foreground mt-1.5 line-clamp-2">{route.description}</p>
           )}
         </div>
+        {selected && (
+          <ChevronRight className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+        )}
       </div>
     </button>
   );
@@ -143,7 +146,7 @@ function RouteCard({
 
 // ── Route sidebar ─────────────────────────────────────────────────────────────
 
-function RouteSidebar() {
+function RouteSidebar({ onClose }: { onClose?: () => void }) {
   const {
     savedRoutes, selectedRouteId, categories, categoryFilter,
     sidebarCheckpostFilter, setSidebarCheckpostFilter,
@@ -167,7 +170,7 @@ function RouteSidebar() {
     return routes;
   }, [savedRoutes, categoryFilter, sidebarCheckpostFilter]);
 
-  if (collapsed) {
+  if (collapsed && !onClose) {
     return (
       <div className="flex flex-col h-full bg-background/95 backdrop-blur-sm border-r border-border w-10 flex-shrink-0 z-10">
         <button
@@ -196,32 +199,37 @@ function RouteSidebar() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background/95 backdrop-blur-sm border-r border-border w-72 flex-shrink-0 z-10">
+    <div className={cn(
+      'flex flex-col h-full bg-background/95 backdrop-blur-sm border-border flex-shrink-0 z-10',
+      onClose ? 'w-full' : 'w-72 border-r'
+    )}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-border flex-shrink-0">
         <div>
-          <h2 className="font-bold text-sm text-foreground">Field Routes</h2>
-          <p className="text-xs text-muted-foreground">
-            {savedRoutes.filter(r => r.type === 'main').length} main route{savedRoutes.filter(r => r.type === 'main').length !== 1 ? 's' : ''}
+          <h2 className="font-bold text-base text-foreground">Field Routes</h2>
+          <p className="text-sm text-muted-foreground">
+            {savedRoutes.filter(r => r.type === 'main').length} route{savedRoutes.filter(r => r.type === 'main').length !== 1 ? 's' : ''} available
           </p>
         </div>
-        <button
-          onClick={() => setCollapsed(true)}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-          title="Collapse"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
+        {onClose ? (
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-2 -mr-1" aria-label="Close">
+            <X className="w-5 h-5" />
+          </button>
+        ) : (
+          <button onClick={() => setCollapsed(true)} className="text-muted-foreground hover:text-foreground transition-colors p-1" title="Collapse">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Category filter chips */}
       {categories.length > 0 && (
-        <div className="px-3 py-2 border-b border-border flex-shrink-0">
-          <div className="flex gap-1.5 flex-wrap">
+        <div className="px-3 py-2.5 border-b border-border flex-shrink-0">
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setCategoryFilter(null)}
               className={cn(
-                'text-xs px-2.5 py-1 rounded-full border font-medium transition-colors',
+                'text-sm px-3 py-1.5 rounded-full border font-medium transition-colors min-h-[36px]',
                 !categoryFilter
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border text-muted-foreground hover:bg-accent'
@@ -234,7 +242,7 @@ function RouteSidebar() {
                 key={cat.id}
                 onClick={() => setCategoryFilter(categoryFilter === cat.id ? null : cat.id)}
                 className={cn(
-                  'text-xs px-2.5 py-1 rounded-full border font-medium transition-colors',
+                  'text-sm px-3 py-1.5 rounded-full border font-medium transition-colors min-h-[36px]',
                   categoryFilter === cat.id
                     ? 'text-white border-transparent'
                     : 'border-border text-muted-foreground hover:bg-accent'
@@ -249,20 +257,20 @@ function RouteSidebar() {
       )}
 
       {/* Checkpost filter */}
-      <div className="px-3 py-2 border-b border-border flex-shrink-0">
-        <div className="flex gap-1.5">
+      <div className="px-3 py-2.5 border-b border-border flex-shrink-0">
+        <div className="flex gap-2">
           {(['all', 'with', 'without'] as const).map(f => (
             <button
               key={f}
               onClick={() => setSidebarCheckpostFilter(f)}
               className={cn(
-                'text-xs px-2.5 py-1 rounded-full border font-medium transition-colors flex-1',
+                'text-sm px-3 py-2 rounded-full border font-medium transition-colors flex-1 min-h-[40px]',
                 sidebarCheckpostFilter === f
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'border-border text-muted-foreground hover:bg-accent'
               )}
             >
-              {f === 'all' ? 'All' : f === 'with' ? 'With Checkpost' : 'Without'}
+              {f === 'all' ? 'All' : f === 'with' ? 'Checkpost' : 'No Checkpost'}
             </button>
           ))}
         </div>
@@ -323,30 +331,30 @@ function CoordSearch() {
   };
 
   return (
-    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 w-72">
+    <div className="absolute top-3 left-3 right-3 md:left-1/2 md:right-auto md:-translate-x-1/2 md:w-80 z-10">
       <div className="bg-background/95 backdrop-blur-sm rounded-xl border shadow-lg px-3 py-2 space-y-1">
-        <div className="flex gap-1">
+        <div className="flex gap-1.5">
           <div className="relative flex-1">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <Input
               value={input}
               onChange={e => { setInput(e.target.value); setError(''); }}
               onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
-              placeholder="Search coordinate: lat, lng"
-              className="h-8 text-xs pl-7"
+              placeholder="Coordinates: lat, lng"
+              className="h-11 text-sm pl-9"
             />
           </div>
           <Button
             size="sm"
-            className="h-8 w-8 p-0 flex-shrink-0"
+            className="h-11 w-11 p-0 flex-shrink-0"
             onClick={handleSearch}
             disabled={!parsed}
             title="Go to coordinate"
           >
-            <Navigation className="w-3.5 h-3.5" />
+            <Navigation className="w-4 h-4" />
           </Button>
         </div>
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
     </div>
   );
@@ -370,29 +378,29 @@ function LocationInfo() {
   };
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
+    <div className="absolute bottom-24 md:bottom-6 left-3 right-3 md:left-1/2 md:right-auto md:-translate-x-1/2 z-10">
       <div className="bg-background/95 backdrop-blur-sm rounded-xl border shadow-lg px-4 py-3 flex items-center gap-3">
-        <MapPin className="w-4 h-4 text-primary flex-shrink-0" />
-        <div>
-          <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Location</p>
-          <p className="text-sm font-mono font-semibold text-foreground">{coordText}</p>
+        <MapPin className="w-5 h-5 text-primary flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Tapped Location</p>
+          <p className="text-base font-mono font-semibold text-foreground truncate">{coordText}</p>
         </div>
-        <div className="flex items-center gap-1 ml-1">
+        <div className="flex items-center gap-1">
           <button
             onClick={handleCopy}
-            className="p-1.5 rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+            className="p-2.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground hover:text-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"
             title="Copy coordinates"
           >
             {copied
-              ? <Check className="w-3.5 h-3.5 text-green-500" />
-              : <Copy className="w-3.5 h-3.5" />}
+              ? <Check className="w-4 h-4 text-green-500" />
+              : <Copy className="w-4 h-4" />}
           </button>
           <button
             onClick={() => setClickedCoord(null)}
-            className="p-1.5 rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+            className="p-2.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground hover:text-foreground min-h-[44px] min-w-[44px] flex items-center justify-center"
             title="Dismiss"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -431,29 +439,91 @@ function DataLoader() {
 
 export default function Home() {
   const { viewKey } = useAuthStore();
-  const { selectedRouteId } = useRouteBuilderStore();
+  const { selectedRouteId, selectRoute } = useRouteBuilderStore();
+  const [mobileListOpen, setMobileListOpen] = useState(false);
 
   if (!viewKey) return <AuthGate />;
+
+  const hasDetail = !!selectedRouteId;
+
+  const closeMobileList = () => setMobileListOpen(false);
+  const openMobileList = () => setMobileListOpen(true);
 
   return (
     <div className="flex h-full w-full overflow-hidden">
       <DataLoader />
 
-      {/* Left: collapsible route list */}
-      <RouteSidebar />
+      {/* Desktop: left collapsible sidebar */}
+      <div className="hidden md:flex h-full flex-shrink-0">
+        <RouteSidebar />
+      </div>
 
-      {/* Center: map + overlays */}
+      {/* Map + overlays (always full-width on mobile) */}
       <div className="flex-1 relative min-w-0">
         <MapView />
         <CoordSearch />
-        <LocationInfo />
+        {!hasDetail && <LocationInfo />}
+
+        {/* Mobile: FAB to open route list (only when no detail open) */}
+        {!hasDetail && !mobileListOpen && (
+          <button
+            onClick={openMobileList}
+            className="md:hidden absolute bottom-6 left-1/2 -translate-x-1/2 z-20 bg-primary text-primary-foreground rounded-full px-6 py-3.5 shadow-xl flex items-center gap-2.5 text-base font-semibold min-h-[52px] active:scale-95 transition-transform"
+          >
+            <Layers className="w-5 h-5" />
+            View Routes
+          </button>
+        )}
+
+        {/* Mobile: back button when detail is open */}
+        {hasDetail && (
+          <button
+            onClick={() => selectRoute(null)}
+            className="md:hidden absolute top-[72px] left-3 z-20 bg-background/95 backdrop-blur-sm border border-border rounded-full px-4 py-2.5 shadow-lg flex items-center gap-2 text-sm font-semibold min-h-[44px] active:scale-95 transition-transform"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </button>
+        )}
       </div>
 
-      {/* Right: route detail panel */}
-      {selectedRouteId && (
-        <div className="h-full flex-shrink-0 shadow-2xl z-10">
+      {/* Desktop: right detail panel */}
+      {hasDetail && (
+        <div className="hidden md:flex h-full flex-shrink-0 shadow-2xl z-10">
           <RouteDetailPanel />
         </div>
+      )}
+
+      {/* Mobile: route list bottom sheet */}
+      {mobileListOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+            onClick={closeMobileList}
+          />
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 h-[82vh] rounded-t-2xl overflow-hidden shadow-2xl flex flex-col bg-background">
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+              <div className="w-10 h-1.5 rounded-full bg-border" />
+            </div>
+            <RouteSidebar onClose={closeMobileList} />
+          </div>
+        </>
+      )}
+
+      {/* Mobile: detail bottom sheet */}
+      {hasDetail && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-black/20"
+            onClick={() => selectRoute(null)}
+          />
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 h-[85vh] rounded-t-2xl overflow-hidden shadow-2xl flex flex-col bg-background">
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+              <div className="w-10 h-1.5 rounded-full bg-border" />
+            </div>
+            <RouteDetailPanel />
+          </div>
+        </>
       )}
     </div>
   );

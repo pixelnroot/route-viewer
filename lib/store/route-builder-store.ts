@@ -247,10 +247,13 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       },
 
       updatePoint: (id, patch) =>
-        set((s) => ({
-          points: s.points.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-          generatedGeometry: null,
-        })),
+        set((s) => {
+          const coordChanged = 'lat' in patch || 'lng' in patch;
+          return {
+            points: s.points.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+            generatedGeometry: coordChanged ? null : s.generatedGeometry,
+          };
+        }),
 
       removePoint: (id) =>
         set((s) => {
