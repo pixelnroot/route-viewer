@@ -124,7 +124,7 @@ export default function MainRouteBuilder() {
     reorderMainSubRoutes(arrayMove(mainRouteSubRouteIds, oldIdx, newIdx));
   };
 
-  const canSave = mainRouteSubRouteIds.length >= 2 && mainRouteMeta.name?.trim();
+  const canSave = mainRouteSubRouteIds.length >= 1 && mainRouteMeta.name?.trim();
 
   const handleSave = async () => {
     if (!canSave || !editKey) return;
@@ -283,7 +283,7 @@ export default function MainRouteBuilder() {
             </p>
             {selectedSubRoutes.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-3 border border-dashed border-border rounded-md">
-                Add sub-routes below. Need at least 2.
+                Add at least one sub-route below.
               </p>
             ) : (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
