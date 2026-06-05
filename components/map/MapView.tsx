@@ -226,7 +226,24 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
   const activePoints = mode === 'create'
     ? builderPoints
     : (() => {
-        if (!selectedRouteId) return [];
+        if (!selectedRouteId) {
+          // No route selected — show all points from all visible routes
+          const seen = new globalThis.Set<string>();
+          const all: RoutePoint[] = [];
+          for (const route of visibleRoutes) {
+            const subIds = route.sub_route_ids ?? [];
+            for (const id of subIds) {
+              const sub = savedRoutes.find(r => r.id === id);
+              for (const pt of (sub?.points ?? [])) {
+                if (!seen.has(pt.id)) { seen.add(pt.id); all.push(pt); }
+              }
+            }
+            for (const pt of (route.points ?? [])) {
+              if (!seen.has(pt.id)) { seen.add(pt.id); all.push(pt); }
+            }
+          }
+          return showCheckposts ? all : all.filter(p => p.type !== 'poi');
+        }
         const sel = savedRoutes.find(r => r.id === selectedRouteId);
         if (!sel) return [];
         // Sub-route: show its own points
