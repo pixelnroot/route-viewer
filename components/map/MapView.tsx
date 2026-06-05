@@ -112,15 +112,16 @@ function getPinIcon(color: string): google.maps.Icon {
 }
 
 function getPopupHTML(point: RoutePoint): string {
-  return `<div style="padding:4px;max-width:240px;font-family:sans-serif;">
-    <h3 style="font-weight:600;font-size:13px;margin:0 0 6px 0;">${point.label}</h3>
+  return `<div style="padding:4px 2px;max-width:260px;font-family:sans-serif;">
+    <h3 style="font-weight:600;font-size:14px;margin:0 0 4px 0;line-height:1.3;">${point.label}</h3>
+    <p style="font-size:11px;color:#888;margin:0 0 ${point.imageUrl || point.note ? '6px' : '0'} 0;font-family:monospace;">${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}</p>
     ${point.imageUrl ? `<img src="${point.imageUrl}" alt="${point.label}" style="width:100%;height:auto;border-radius:6px;margin-bottom:6px;object-fit:cover;display:block;"/>` : ''}
     ${point.note ? `<p style="font-size:12px;line-height:1.5;margin:0;color:#444;">${point.note}</p>` : ''}
   </div>`;
 }
 
-function hasPopupContent(point: RoutePoint): boolean {
-  return !!(point.note || point.imageUrl);
+function hasPopupContent(_point: RoutePoint): boolean {
+  return true;
 }
 
 type MapType = 'roadmap' | 'satellite' | 'terrain';
@@ -558,7 +559,7 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       {/* Route picker — shown when multiple routes overlap at click point */}
       {pickerRoutes.length > 1 && pickerPos && (
         <div
-          className="absolute z-50 bg-background border border-border rounded-lg shadow-xl p-1.5 min-w-[200px] max-w-[260px]"
+          className="absolute z-50 bg-background border border-border rounded-lg shadow-xl p-1.5 min-w-[220px] max-w-[320px]"
           style={{ left: pickerPos.x + 8, top: pickerPos.y - 8 }}
         >
           <p className="text-[11px] text-muted-foreground font-medium px-2 py-1">Select route:</p>
@@ -570,10 +571,10 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
                 setPickerRoutes([]);
                 setPickerPos(null);
               }}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-left transition-colors"
+              className="w-full flex items-center gap-2 px-2 py-2 rounded-md hover:bg-accent text-left transition-colors"
             >
-              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
-              <span className="text-sm truncate text-foreground">{r.name}</span>
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5" style={{ backgroundColor: r.color }} />
+              <span className="text-sm text-foreground leading-snug">{r.name}</span>
             </button>
           ))}
         </div>

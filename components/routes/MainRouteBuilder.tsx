@@ -43,7 +43,7 @@ function SortableSubRoute({
         <GripVertical className="w-5 h-5" />
       </button>
       <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-      <span className="text-sm font-medium flex-1 truncate" title={name}>{name}</span>
+      <span className="text-sm font-medium flex-1 break-words line-clamp-3">{name}</span>
       <button
         onClick={onRemove}
         className="text-muted-foreground hover:text-destructive flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center -mr-1"
@@ -326,7 +326,7 @@ export default function MainRouteBuilder() {
                     className="w-full flex items-center gap-3 p-3.5 min-h-[52px] rounded-lg border border-border hover:bg-accent active:scale-[0.98] text-left transition-colors touch-manipulation"
                   >
                     <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: r.color }} />
-                    <span className="text-sm font-medium flex-1 truncate" title={r.name}>{r.name}</span>
+                    <span className="text-sm font-medium flex-1 break-words line-clamp-3">{r.name}</span>
                     <span className="text-xs text-muted-foreground">{r.points.length} pts</span>
                     <Plus className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                   </button>
@@ -359,7 +359,7 @@ export default function MainRouteBuilder() {
                   <div key={pt.id} className="flex items-center gap-2 bg-card border border-border rounded-md p-2">
                     <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate" title={pt.label}>{pt.label}</p>
+                      <p className="text-xs font-medium break-words">{pt.label}</p>
                       <p className="text-[10px] text-muted-foreground font-mono">{pt.lat.toFixed(4)}, {pt.lng.toFixed(4)}</p>
                       <p className="text-[10px] text-muted-foreground">
                         {pt.position_after === 'start'

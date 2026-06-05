@@ -124,7 +124,7 @@ function RouteCard({
         <div className="flex items-start gap-3">
           <div className="w-4 h-4 rounded-full flex-shrink-0 mt-0.5 shadow-sm" style={{ backgroundColor: route.color }} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold truncate" title={route.name}>{route.name}</p>
+            <p className="text-sm font-semibold break-words leading-snug">{route.name}</p>
             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
               {route.type === 'main' ? (
                 <span className="text-xs text-primary font-medium flex items-center gap-1">
@@ -609,7 +609,7 @@ function AdminRouteDetail({ editKey, onClose }: { editKey: string; onClose?: () 
                         {i < subRoutes.length - 1 && <div className="w-px h-3 bg-border mt-0.5" />}
                       </div>
                       <div className="min-w-0 flex-1 pb-1">
-                        <p className="text-xs font-medium truncate" title={sub.name}>{sub.name}</p>
+                        <p className="text-xs font-medium break-words leading-snug">{sub.name}</p>
                         <p className="text-[10px] text-muted-foreground">{sub.points.length} pts</p>
                       </div>
                     </button>
@@ -641,7 +641,7 @@ function AdminRouteDetail({ editKey, onClose }: { editKey: string; onClose?: () 
                       {i < sorted.length - 1 && <div className="w-px h-3 bg-border mt-0.5" />}
                     </div>
                     <div className="min-w-0 flex-1 pb-1">
-                      <p className="text-xs font-medium truncate" title={pt.label}>{pt.label}</p>
+                      <p className="text-xs font-medium break-words leading-snug">{pt.label}</p>
                       {pt.category && <p className="text-[10px] text-muted-foreground capitalize">{pt.category}</p>}
                       <p className="text-[10px] font-mono text-muted-foreground">
                         {pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}
