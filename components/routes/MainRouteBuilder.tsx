@@ -65,6 +65,7 @@ export default function MainRouteBuilder() {
 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [userEditedName, setUserEditedName] = useState(false);
 
   const [manualPoints, setManualPoints] = useState<RoutePoint[]>([]);
   const [showAddPoint, setShowAddPoint] = useState(false);
@@ -79,8 +80,10 @@ export default function MainRouteBuilder() {
     if (editingRouteId) {
       const existing = savedRoutes.find((r) => r.id === editingRouteId);
       setManualPoints(existing?.points ?? []);
+      setUserEditedName(true);
     } else {
       setManualPoints([]);
+      setUserEditedName(false);
     }
   }, [editingRouteId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -116,6 +119,14 @@ export default function MainRouteBuilder() {
     .filter(Boolean) as SavedRoute[];
   const availableSubRoutes = subRoutes.filter((r) => !mainRouteSubRouteIds.includes(r.id));
 
+  useEffect(() => {
+    if (userEditedName || editingRouteId) return;
+    if (selectedSubRoutes.length === 0) return;
+    const first = selectedSubRoutes[0].name;
+    const last = selectedSubRoutes[selectedSubRoutes.length - 1].name;
+    setMainRouteMeta({ name: first === last ? first : `${first} → ${last}` });
+  }, [mainRouteSubRouteIds]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -124,12 +135,17 @@ export default function MainRouteBuilder() {
     reorderMainSubRoutes(arrayMove(mainRouteSubRouteIds, oldIdx, newIdx));
   };
 
-  const canSave = mainRouteSubRouteIds.length >= 1 && mainRouteMeta.name?.trim();
+  const canSave = mainRouteSubRouteIds.length >= 1;
 
   const handleSave = async () => {
     if (!canSave || !editKey) return;
     setIsSaving(true);
     setSaveError(null);
+    const effectiveName = mainRouteMeta.name?.trim() || (() => {
+      const first = selectedSubRoutes[0]?.name ?? 'Main Route';
+      const last = selectedSubRoutes[selectedSubRoutes.length - 1]?.name ?? first;
+      return first === last ? first : `${first} → ${last}`;
+    })();
     try {
       const travelMode = mainRouteMeta.travel_mode ?? 'driving';
 
@@ -219,7 +235,7 @@ export default function MainRouteBuilder() {
       const body = {
         type: 'main' as const,
         sub_route_ids: mainRouteSubRouteIds,
-        name: mainRouteMeta.name!,
+        name: effectiveName,
         description: mainRouteMeta.description ?? '',
         color: mainRouteMeta.color ?? '#3b82f6',
         status: mainRouteMeta.status ?? 'draft',
@@ -467,10 +483,10 @@ export default function MainRouteBuilder() {
               Main Route Details
             </p>
             <div className="space-y-1">
-              <Label className="text-xs">Name *</Label>
+              <Label className="text-xs">Name</Label>
               <Input
                 value={mainRouteMeta.name ?? ''}
-                onChange={(e) => setMainRouteMeta({ name: e.target.value })}
+                onChange={(e) => { setUserEditedName(true); setMainRouteMeta({ name: e.target.value }); }}
                 placeholder="Main route name"
                 className="h-11 text-sm touch-manipulation"
               />
