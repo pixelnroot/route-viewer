@@ -69,6 +69,7 @@ export default function MainRouteBuilder() {
   const [newPtLat, setNewPtLat] = useState('');
   const [newPtLng, setNewPtLng] = useState('');
   const [newPtNote, setNewPtNote] = useState('');
+  const [newPtPosition, setNewPtPosition] = useState('');
 
   useEffect(() => {
     if (editingRouteId) {
@@ -91,6 +92,7 @@ export default function MainRouteBuilder() {
       lng,
       note: newPtNote.trim() || undefined,
       order: manualPoints.length,
+      position_after: newPtPosition || undefined,
     };
     setManualPoints((prev) => [...prev, pt]);
     setNewPtLabel('');
@@ -98,6 +100,7 @@ export default function MainRouteBuilder() {
     setNewPtLat('');
     setNewPtLng('');
     setNewPtNote('');
+    setNewPtPosition('');
     setShowAddPoint(false);
   };
 
@@ -275,6 +278,13 @@ export default function MainRouteBuilder() {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium truncate">{pt.label}</p>
                       <p className="text-[10px] text-muted-foreground font-mono">{pt.lat.toFixed(4)}, {pt.lng.toFixed(4)}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {pt.position_after === 'start'
+                          ? 'Before all sub-routes'
+                          : pt.position_after
+                          ? `After: ${selectedSubRoutes.find(r => r.id === pt.position_after)?.name ?? pt.position_after}`
+                          : 'At the end'}
+                      </p>
                     </div>
                     <span className="text-[10px] text-muted-foreground capitalize">{pt.type}</span>
                     <button
@@ -305,6 +315,17 @@ export default function MainRouteBuilder() {
                   <option value="poi">POI / Checkpost</option>
                   <option value="start">Start</option>
                   <option value="destination">Destination</option>
+                </select>
+                <select
+                  value={newPtPosition}
+                  onChange={(e) => setNewPtPosition(e.target.value)}
+                  className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
+                >
+                  <option value="">At the end</option>
+                  <option value="start">Before all sub-routes</option>
+                  {selectedSubRoutes.map((r) => (
+                    <option key={r.id} value={r.id}>After: {r.name}</option>
+                  ))}
                 </select>
                 <div className="flex gap-2">
                   <Input

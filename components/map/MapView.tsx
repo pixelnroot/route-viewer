@@ -172,6 +172,7 @@ export default function MapView() {
   const polylinesRef = useRef<globalThis.Map<string, google.maps.Polyline>>(new globalThis.Map());
   const markersRef = useRef<globalThis.Map<string, google.maps.Marker>>(new globalThis.Map());
   const pinMarkerRef = useRef<google.maps.Marker | null>(null);
+  const selectedSubPolyRef = useRef<google.maps.Polyline | null>(null);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const suppressClickRef = useRef(false);
   const initialFitDoneRef = useRef(false);
@@ -214,7 +215,13 @@ export default function MapView() {
     : (() => {
         if (!selectedRouteId) return [];
         const sel = savedRoutes.find(r => r.id === selectedRouteId);
-        if (!sel || sel.type !== 'main') return [];
+        if (!sel) return [];
+        // Sub-route: show its own points
+        if (sel.type !== 'main') {
+          const pts = [...sel.points].sort((a, b) => a.order - b.order);
+          return showCheckposts ? pts : pts.filter(p => p.type !== 'poi');
+        }
+        // Main route: combine direct points + all sub-route points
         const pts = [
           ...(sel.points ?? []),
           ...(sel.sub_route_ids ?? []).flatMap(id => {
@@ -270,11 +277,36 @@ export default function MapView() {
       polylinesRef.current.clear();
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current.clear();
+      selectedSubPolyRef.current?.setMap(null);
+      selectedSubPolyRef.current = null;
       infoWindowRef.current?.close();
       mapRef.current = null;
       setMapReady(false);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Draw selected sub-route polyline (sub-routes are hidden from main map; show only when selected)
+  useEffect(() => {
+    const map = mapRef.current;
+    selectedSubPolyRef.current?.setMap(null);
+    selectedSubPolyRef.current = null;
+    if (!map || !mapReady || !selectedRouteId) return;
+    const sel = savedRoutes.find((r) => r.id === selectedRouteId);
+    if (!sel || sel.type === 'main') return;
+    const coords = sel.geometry?.coordinates;
+    if (!coords?.length) return;
+    const path = (coords as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
+    selectedSubPolyRef.current = new google.maps.Polyline({
+      path,
+      geodesic: true,
+      strokeColor: sel.color,
+      strokeOpacity: 1.0,
+      strokeWeight: 6,
+      map,
+      zIndex: 15,
+      clickable: false,
+    });
+  }, [selectedRouteId, mapReady, savedRoutes]);
 
   // Map type change
   useEffect(() => {
@@ -485,13 +517,13 @@ export default function MapView() {
     }
   }, [mapReady, savedRoutes.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Zoom to selected route
+  // Zoom to selected route (works for both main routes and sub-routes)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !selectedRouteId) return;
     const route = savedRoutes.find((r) => r.id === selectedRouteId);
     if (!route) return;
-    const geometry = getDisplayGeometry(route, savedRoutes);
+    const geometry = route.type !== 'main' ? route.geometry : getDisplayGeometry(route, savedRoutes);
     if (!geometry?.coordinates?.length) return;
     const bounds = new google.maps.LatLngBounds();
     (geometry.coordinates as [number, number][]).forEach(([lng, lat]) => bounds.extend({ lat, lng }));
