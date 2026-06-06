@@ -30,6 +30,22 @@ const POINT_LETTER: Record<PointType, string> = {
   destination: 'D',
 };
 
+const CATEGORY_LETTER: Record<string, string> = {
+  checkpost: 'CP',
+  mosque: 'MO',
+  school: 'SC',
+  hospital: 'H',
+  other: 'P',
+};
+
+const CATEGORY_COLOR: Record<string, string> = {
+  checkpost: '#ef4444',
+  mosque: '#8b5cf6',
+  school: '#06b6d4',
+  hospital: '#f97316',
+  other: '#eab308',
+};
+
 // Classic Google Maps-style location pin: large circle head + teardrop tail + white hole
 // Canvas angle note (Y-axis DOWN): 0=right, 90=DOWN, 180=left, 270=UP
 // 60° = lower-right of circle, 120° = lower-left of circle
@@ -93,11 +109,17 @@ function createCirclePng(color: string, label: string, size: number): string {
   return canvas.toDataURL('image/png');
 }
 
-function getMarkerIcon(type: PointType, _size: number): google.maps.Icon {
+function getMarkerIcon(point: RoutePoint, _size: number): google.maps.Icon {
   const sizes: Record<PointType, number> = { start: 32, destination: 32, poi: 28, waypoint: 22 };
-  const s = sizes[type];
+  const s = sizes[point.type];
+  const color = point.type === 'poi' && point.category
+    ? (CATEGORY_COLOR[point.category] ?? POINT_COLORS.poi)
+    : POINT_COLORS[point.type];
+  const label = point.type === 'poi' && point.category
+    ? (CATEGORY_LETTER[point.category] ?? 'P')
+    : POINT_LETTER[point.type];
   return {
-    url: createCirclePng(POINT_COLORS[type], POINT_LETTER[type], s),
+    url: createCirclePng(color, label, s),
     scaledSize: new google.maps.Size(s, s),
     anchor: new google.maps.Point(s / 2, s / 2),
   };
@@ -482,12 +504,12 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
         if (pos && (Math.abs(pos.lat() - point.lat) > 1e-7 || Math.abs(pos.lng() - point.lng) > 1e-7)) {
           m.setPosition({ lat: point.lat, lng: point.lng });
         }
-        m.setIcon(getMarkerIcon(point.type, size));
+        m.setIcon(getMarkerIcon(point, size));
       } else {
         const marker = new google.maps.Marker({
           position: { lat: point.lat, lng: point.lng },
           map,
-          icon: getMarkerIcon(point.type, size),
+          icon: getMarkerIcon(point, size),
           draggable: mode === 'create',
           zIndex: 100,
         });

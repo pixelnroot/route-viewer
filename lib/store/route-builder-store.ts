@@ -169,6 +169,7 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
             risk_level: route.risk_level,
             travel_mode: route.travel_mode,
             category_id: route.category_id,
+            has_checkpost: route.has_checkpost,
           },
           generatedGeometry: route.geometry ?? null,
           generatedDistance: null,

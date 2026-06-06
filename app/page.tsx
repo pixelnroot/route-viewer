@@ -157,16 +157,10 @@ function RouteSidebar({ onClose }: { onClose?: () => void }) {
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
 
   const filtered = useMemo(() => {
-    const hasPoi = (r: SavedRoute) => {
-      return (r.sub_route_ids ?? []).some(id => {
-        const sub = savedRoutes.find(s => s.id === id);
-        return sub?.points.some(p => p.type === 'poi') ?? false;
-      });
-    };
     let routes = savedRoutes.filter(r => r.type === 'main');
     if (categoryFilter) routes = routes.filter(r => r.category_id === categoryFilter);
-    if (sidebarCheckpostFilter === 'with') routes = routes.filter(hasPoi);
-    if (sidebarCheckpostFilter === 'without') routes = routes.filter(r => !hasPoi(r));
+    if (sidebarCheckpostFilter === 'with') routes = routes.filter(r => r.has_checkpost === true);
+    if (sidebarCheckpostFilter === 'without') routes = routes.filter(r => r.has_checkpost !== true);
     return routes;
   }, [savedRoutes, categoryFilter, sidebarCheckpostFilter]);
 

@@ -242,6 +242,7 @@ export default function MainRouteBuilder() {
         risk_level: mainRouteMeta.risk_level ?? 'low',
         travel_mode: mainRouteMeta.travel_mode ?? 'driving',
         category_id: mainRouteMeta.category_id,
+        has_checkpost: selectedSubRoutes.some(r => r.has_checkpost === true),
         points: manualPoints,
         geometry: combinedGeometry,
       };

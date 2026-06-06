@@ -22,6 +22,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { fetchRouteGoogle } from '@/lib/routing/google-directions';
 import { haversineDistance, formatDistance, formatDuration } from '@/lib/routing/osrm';
 import type { TravelMode } from '@/types/routes';
+import { cn } from '@/lib/utils';
 
 function parseCoord(input: string): { lat: number; lng: number } | null {
   const parts = input.trim().split(/[\s,]+/).filter(Boolean);
@@ -158,6 +159,7 @@ export default function RouteBuilder() {
         risk_level: meta.risk_level ?? 'low',
         travel_mode: meta.travel_mode ?? 'driving',
         category_id: meta.category_id,
+        has_checkpost: meta.has_checkpost ?? false,
         points,
         geometry: generatedGeometry,
       };
@@ -403,6 +405,36 @@ export default function RouteBuilder() {
               value={meta.color ?? '#3b82f6'}
               onChange={(c) => setMeta({ color: c })}
             />
+
+            <div className="space-y-1">
+              <Label className="text-xs">Checkpost</Label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMeta({ has_checkpost: true })}
+                  className={cn(
+                    'flex-1 h-10 rounded-md border text-sm font-medium transition-colors',
+                    meta.has_checkpost === true
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  Has Checkpost
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMeta({ has_checkpost: false })}
+                  className={cn(
+                    'flex-1 h-10 rounded-md border text-sm font-medium transition-colors',
+                    meta.has_checkpost === false
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-muted-foreground hover:bg-accent'
+                  )}
+                >
+                  No Checkpost
+                </button>
+              </div>
+            </div>
           </section>
 
           <Separator />

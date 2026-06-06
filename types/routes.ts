@@ -35,6 +35,7 @@ export interface RouteMeta {
   risk_level: RiskLevel;
   travel_mode: TravelMode;
   category_id?: string;
+  has_checkpost?: boolean;
 }
 
 export type RouteType = 'sub' | 'main';
