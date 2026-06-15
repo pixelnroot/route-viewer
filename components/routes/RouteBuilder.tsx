@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { X, Route, Loader2, Save, AlertCircle, MapPin, Plus, Navigation, Pencil, List, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
+import { X, Route, Loader2, Save, AlertCircle, MapPin, Plus, Navigation, Pencil, List, ChevronDown, ChevronUp, FileJson, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,7 +21,7 @@ import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { fetchRouteGoogle } from '@/lib/routing/google-directions';
 import { haversineDistance, formatDistance, formatDuration } from '@/lib/routing/osrm';
-import type { TravelMode } from '@/types/routes';
+import type { TravelMode, PointType, PoiCategory, RoutePoint } from '@/types/routes';
 import { cn } from '@/lib/utils';
 
 function parseCoord(input: string): { lat: number; lng: number } | null {
@@ -71,6 +71,10 @@ export default function RouteBuilder() {
   const [bulkInput, setBulkInput] = useState('');
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [showBulk, setShowBulk] = useState(true);
+  const [jsonInput, setJsonInput] = useState('');
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [showJsonImport, setShowJsonImport] = useState(false);
+  const jsonFileInputRef = useRef<HTMLInputElement>(null);
 
   const parsedCoord = useMemo(() => parseCoord(coordInput), [coordInput]);
 
@@ -129,6 +133,87 @@ export default function RouteBuilder() {
     setBulkInput('');
     setBulkError(null);
     setShowBulk(false);
+  };
+
+  const handleJsonFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setJsonInput(String(reader.result ?? ''));
+      setJsonError(null);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleJsonImport = () => {
+    const raw = jsonInput.trim();
+    if (!raw) { setJsonError('Paste or upload JSON first'); return; }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      setJsonError('Invalid JSON syntax');
+      return;
+    }
+
+    if (!Array.isArray(parsed)) { setJsonError('JSON must be an array of points'); return; }
+
+    const VALID_TYPES: PointType[] = ['start', 'waypoint', 'poi', 'destination'];
+    const VALID_CATEGORIES: PoiCategory[] = ['checkpost', 'mosque', 'school', 'hospital', 'other'];
+
+    const skipped: string[] = [];
+    const valid: Omit<RoutePoint, 'id' | 'order'>[] = [];
+
+    parsed.forEach((entry, i) => {
+      const n = i + 1;
+      if (typeof entry !== 'object' || entry === null) { skipped.push(`#${n}: not an object`); return; }
+      const e = entry as Record<string, unknown>;
+
+      const label = typeof e.label === 'string' ? e.label.trim() : '';
+      if (!label) { skipped.push(`#${n}: missing "label"`); return; }
+
+      const type = e.type;
+      if (typeof type !== 'string' || !VALID_TYPES.includes(type as PointType)) {
+        skipped.push(`#${n}: invalid "type" (start/waypoint/poi/destination)`); return;
+      }
+
+      const lat = typeof e.lat === 'number' ? e.lat : NaN;
+      const lng = typeof e.lng === 'number' ? e.lng : NaN;
+      if (isNaN(lat) || isNaN(lng)) { skipped.push(`#${n}: invalid "lat"/"lng"`); return; }
+
+      let category: PoiCategory | undefined;
+      if (e.category !== undefined) {
+        if (type !== 'poi') { skipped.push(`#${n}: "category" only valid when type is "poi"`); return; }
+        if (typeof e.category !== 'string' || !VALID_CATEGORIES.includes(e.category as PoiCategory)) {
+          skipped.push(`#${n}: invalid "category" (checkpost/mosque/school/hospital/other)`); return;
+        }
+        category = e.category as PoiCategory;
+      }
+
+      const note = typeof e.note === 'string' ? e.note.trim() || undefined : undefined;
+      const icon = typeof e.icon === 'string' ? e.icon.trim() || undefined : undefined;
+
+      valid.push({ label, type: type as PointType, lat, lng, category, note, icon });
+    });
+
+    if (valid.length === 0) {
+      setJsonError(skipped.length ? `No valid points. ${skipped.join('; ')}` : 'No valid points found');
+      return;
+    }
+
+    valid.forEach((p) => addPoint(p));
+    flyTo(valid[0].lat, valid[0].lng);
+
+    if (skipped.length > 0) {
+      setJsonError(`Imported ${valid.length} point(s). Skipped — ${skipped.join('; ')}`);
+    } else {
+      setJsonError(null);
+      setJsonInput('');
+      setShowJsonImport(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -297,6 +382,65 @@ export default function RouteBuilder() {
                   <Plus className="w-3.5 h-3.5 mr-1.5" />
                   Import All Points
                 </Button>
+              </div>
+            )}
+          </section>
+
+          <Separator />
+
+          {/* JSON import */}
+          <section className="space-y-2">
+            <button
+              onClick={() => setShowJsonImport(v => !v)}
+              className="flex items-center justify-between w-full text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <FileJson className="w-3.5 h-3.5" />
+                Import Points (JSON)
+              </span>
+              {showJsonImport ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            {showJsonImport && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Array of points: <code className="bg-muted px-1 rounded">label, type, lat, lng, category?, note?, icon?</code>
+                </p>
+                <textarea
+                  value={jsonInput}
+                  onChange={(e) => { setJsonInput(e.target.value); setJsonError(null); }}
+                  placeholder='[{"label":"Start","type":"start","lat":21.515,"lng":92.1633}]'
+                  className="w-full h-28 text-xs font-mono rounded-md border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <input
+                  ref={jsonFileInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleJsonFileUpload}
+                  className="hidden"
+                />
+                {jsonError && (
+                  <p className="text-xs text-destructive">{jsonError}</p>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-8 text-xs"
+                    onClick={() => jsonFileInputRef.current?.click()}
+                  >
+                    <Upload className="w-3.5 h-3.5 mr-1.5" />
+                    Upload File
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 h-8 text-xs"
+                    onClick={handleJsonImport}
+                    disabled={!jsonInput.trim()}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Import Points
+                  </Button>
+                </div>
               </div>
             )}
           </section>
