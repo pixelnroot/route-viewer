@@ -239,9 +239,8 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     // In admin mode: only draw the selected main route; everything else stays hidden
     if (adminMode && r.id !== selectedRouteId) return false;
     if (categoryFilter && r.category_id !== categoryFilter) return false;
-    const hasPoi = routeHasPoi(r, savedRoutes);
-    if (sidebarCheckpostFilter === 'with' && !hasPoi) return false;
-    if (sidebarCheckpostFilter === 'without' && hasPoi) return false;
+    if (sidebarCheckpostFilter === 'with' && r.has_checkpost !== true) return false;
+    if (sidebarCheckpostFilter === 'without' && r.has_checkpost === true) return false;
     return true;
   });
 
@@ -430,9 +429,8 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
           const allVisible = sr.filter((r) => {
             if (r.type !== 'main') return false;
             if (cf && r.category_id !== cf) return false;
-            const hp = routeHasPoi(r, sr);
-            if (scf === 'with' && !hp) return false;
-            if (scf === 'without' && hp) return false;
+            if (scf === 'with' && r.has_checkpost !== true) return false;
+            if (scf === 'without' && r.has_checkpost === true) return false;
             return true;
           });
 
@@ -598,24 +596,26 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       {/* Route picker — shown when multiple routes overlap at click point */}
       {pickerRoutes.length > 1 && pickerPos && (
         <div
-          className="absolute z-50 bg-background border border-border rounded-lg shadow-xl p-1.5 min-w-[220px] max-w-[320px]"
+          className="absolute z-50 bg-background border border-border rounded-lg shadow-xl p-1.5 min-w-[220px] max-w-[320px] max-h-[300px] flex flex-col"
           style={{ left: pickerPos.x + 8, top: pickerPos.y - 8 }}
         >
-          <p className="text-[11px] text-muted-foreground font-medium px-2 py-1">Select route:</p>
-          {pickerRoutes.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => {
-                useRouteBuilderStore.getState().selectRoute(r.id);
-                setPickerRoutes([]);
-                setPickerPos(null);
-              }}
-              className="w-full flex items-center gap-2 px-2 py-2 rounded-md hover:bg-accent text-left transition-colors"
-            >
-              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5" style={{ backgroundColor: r.color }} />
-              <span className="text-sm text-foreground leading-snug">{r.name}</span>
-            </button>
-          ))}
+          <p className="text-[11px] text-muted-foreground font-medium px-2 py-1 flex-shrink-0">Select route:</p>
+          <div className="overflow-y-auto flex-1">
+            {pickerRoutes.map((r) => (
+              <button
+                key={r.id}
+                onClick={() => {
+                  useRouteBuilderStore.getState().selectRoute(r.id);
+                  setPickerRoutes([]);
+                  setPickerPos(null);
+                }}
+                className="w-full flex items-center gap-2 px-2 py-2 rounded-md hover:bg-accent text-left transition-colors"
+              >
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5" style={{ backgroundColor: r.color }} />
+                <span className="text-sm text-foreground leading-snug">{r.name}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
