@@ -407,7 +407,7 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
         const polyline = new google.maps.Polyline({
           path,
           geodesic: true,
-          strokeColor: route.color,
+          strokeColor: isSelected ? '#dc2626' : route.color,
           strokeOpacity: isSelected ? 1.0 : 0.8,
           strokeWeight: isSelected ? 7 : 4,
           map,
