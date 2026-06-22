@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  X, Layers, Save, Loader2, AlertCircle, Plus, Minus, GripVertical, MapPin, Trash2,
+  X, Layers, Save, Loader2, AlertCircle, Plus, Minus, GripVertical, MapPin, Trash2, Pencil,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -69,6 +69,7 @@ export default function MainRouteBuilder() {
 
   const [manualPoints, setManualPoints] = useState<RoutePoint[]>([]);
   const [showAddPoint, setShowAddPoint] = useState(false);
+  const [editingPtId, setEditingPtId] = useState<string | null>(null);
   const [newPtLabel, setNewPtLabel] = useState('');
   const [newPtType, setNewPtType] = useState<PointType>('waypoint');
   const [newPtLat, setNewPtLat] = useState('');
@@ -91,17 +92,52 @@ export default function MainRouteBuilder() {
     const lat = parseFloat(newPtLat);
     const lng = parseFloat(newPtLng);
     if (!newPtLabel.trim() || isNaN(lat) || isNaN(lng)) return;
-    const pt: RoutePoint = {
-      id: uuidv4(),
-      label: newPtLabel.trim(),
-      type: newPtType,
-      lat,
-      lng,
-      note: newPtNote.trim() || undefined,
-      order: manualPoints.length,
-      position_after: newPtPosition || undefined,
-    };
-    setManualPoints((prev) => [...prev, pt]);
+    if (editingPtId) {
+      setManualPoints((prev) => prev.map((p) => p.id === editingPtId ? {
+        ...p,
+        label: newPtLabel.trim(),
+        type: newPtType,
+        lat,
+        lng,
+        note: newPtNote.trim() || undefined,
+        position_after: newPtPosition || undefined,
+      } : p));
+    } else {
+      const pt: RoutePoint = {
+        id: uuidv4(),
+        label: newPtLabel.trim(),
+        type: newPtType,
+        lat,
+        lng,
+        note: newPtNote.trim() || undefined,
+        order: manualPoints.length,
+        position_after: newPtPosition || undefined,
+      };
+      setManualPoints((prev) => [...prev, pt]);
+    }
+    setEditingPtId(null);
+    setNewPtLabel('');
+    setNewPtType('waypoint');
+    setNewPtLat('');
+    setNewPtLng('');
+    setNewPtNote('');
+    setNewPtPosition('');
+    setShowAddPoint(false);
+  };
+
+  const startEditPoint = (pt: RoutePoint) => {
+    setEditingPtId(pt.id);
+    setNewPtLabel(pt.label);
+    setNewPtType(pt.type);
+    setNewPtLat(String(pt.lat));
+    setNewPtLng(String(pt.lng));
+    setNewPtNote(pt.note ?? '');
+    setNewPtPosition(pt.position_after ?? '');
+    setShowAddPoint(true);
+  };
+
+  const cancelPointForm = () => {
+    setEditingPtId(null);
     setNewPtLabel('');
     setNewPtType('waypoint');
     setNewPtLat('');
@@ -388,6 +424,12 @@ export default function MainRouteBuilder() {
                     </div>
                     <span className="text-[10px] text-muted-foreground capitalize">{pt.type}</span>
                     <button
+                      onClick={() => startEditPoint(pt)}
+                      className="text-muted-foreground hover:text-primary flex-shrink-0"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => setManualPoints((prev) => prev.filter((_, j) => j !== i).map((p, j) => ({ ...p, order: j })))}
                       className="text-muted-foreground hover:text-destructive flex-shrink-0"
                     >
@@ -400,6 +442,9 @@ export default function MainRouteBuilder() {
 
             {showAddPoint && (
               <div className="border border-border rounded-xl p-4 space-y-3 bg-card">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  {editingPtId ? 'Edit Point' : 'Add Point'}
+                </p>
                 <Input
                   placeholder="Label *"
                   value={newPtLabel}
@@ -463,8 +508,10 @@ export default function MainRouteBuilder() {
                   className="h-11 text-sm touch-manipulation"
                 />
                 <div className="flex gap-2">
-                  <Button onClick={addManualPoint} className="flex-1 h-12 text-base">Add Point</Button>
-                  <Button variant="outline" onClick={() => setShowAddPoint(false)} className="flex-1 h-12 text-base">Cancel</Button>
+                  <Button onClick={addManualPoint} className="flex-1 h-12 text-base">
+                    {editingPtId ? 'Save Point' : 'Add Point'}
+                  </Button>
+                  <Button variant="outline" onClick={cancelPointForm} className="flex-1 h-12 text-base">Cancel</Button>
                 </div>
               </div>
             )}

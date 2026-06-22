@@ -209,6 +209,7 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const suppressClickRef = useRef(false);
   const initialFitDoneRef = useRef(false);
+  const mainBuilderFitDoneRef = useRef(false);
 
   const [mapType, setMapType] = useState<MapType>('roadmap');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -220,6 +221,7 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
 
   const {
     mode,
+    builderMode,
     points: builderPoints,
     savedRoutes,
     selectedRouteId,
@@ -229,8 +231,11 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     pendingFlyTo,
     generatedGeometry,
     clickedCoord,
+    mainRouteSubRouteIds,
     selectRoute,
     addPointAtLatLng,
+    addSubRouteToMain,
+    removeSubRouteFromMain,
     updatePoint,
   } = useRouteBuilderStore();
 
@@ -316,11 +321,13 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
         // If user clicked a Google Maps POI, let native info window open — don't intercept
         if (e.placeId) return;
         closePickerRef.current();
-        const { mode: m, addPointAtLatLng: add, setClickedCoord } = useRouteBuilderStore.getState();
-        if (m === 'create') {
+        const { mode: m, builderMode: bm, addPointAtLatLng: add, setClickedCoord } = useRouteBuilderStore.getState();
+        if (m === 'create' && bm !== 'main') {
           add(e.latLng!.lat(), e.latLng!.lng());
         } else {
-          useRouteBuilderStore.getState().selectRoute(null);
+          if (!(m === 'create' && bm === 'main')) {
+            useRouteBuilderStore.getState().selectRoute(null);
+          }
           infoWindowRef.current?.close();
           if (e.latLng) {
             setClickedCoord({ lat: e.latLng.lat(), lng: e.latLng.lng() });
@@ -463,6 +470,39 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       });
     }
 
+    // Main-route builder: draw all sub-routes, click to toggle membership
+    if (mode === 'create' && builderMode === 'main') {
+      savedRoutes.filter((r) => r.type !== 'main').forEach((route) => {
+        const geometry = route.geometry;
+        if (!geometry?.coordinates?.length) return;
+
+        const isSelected = mainRouteSubRouteIds.includes(route.id);
+        const path = (geometry.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
+
+        const polyline = new google.maps.Polyline({
+          path,
+          geodesic: true,
+          strokeColor: isSelected ? '#dc2626' : route.color,
+          strokeOpacity: isSelected ? 1.0 : 0.6,
+          strokeWeight: isSelected ? 7 : 4,
+          map,
+          zIndex: isSelected ? 10 : 1,
+          clickable: true,
+        });
+
+        polyline.addListener('click', () => {
+          suppressClickRef.current = true;
+          setTimeout(() => { suppressClickRef.current = false; }, 0);
+          const { mainRouteSubRouteIds: ids, addSubRouteToMain: add, removeSubRouteFromMain: rm } =
+            useRouteBuilderStore.getState();
+          if (ids.includes(route.id)) rm(route.id);
+          else add(route.id);
+        });
+
+        polylinesRef.current.set(route.id, polyline);
+      });
+    }
+
     // Preview route (during create)
     if (generatedGeometry?.coordinates?.length) {
       const path = (generatedGeometry.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
@@ -478,7 +518,7 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       });
       polylinesRef.current.set('__preview__', preview);
     }
-  }, [visibleRoutes, selectedRouteId, mode, generatedGeometry, mapReady]);
+  }, [visibleRoutes, selectedRouteId, mode, builderMode, savedRoutes, mainRouteSubRouteIds, generatedGeometry, mapReady]);
 
   // Sync markers
   useEffect(() => {
@@ -575,6 +615,32 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       initialFitDoneRef.current = true;
     }
   }, [mapReady, savedRoutes.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-fit to all sub-routes when entering the main-route builder
+  useEffect(() => {
+    if (!(mode === 'create' && builderMode === 'main')) {
+      mainBuilderFitDoneRef.current = false;
+      return;
+    }
+    const map = mapRef.current;
+    if (!map || !mapReady || mainBuilderFitDoneRef.current) return;
+    const subRoutes = savedRoutes.filter((r) => r.type !== 'main');
+    if (subRoutes.length === 0) return;
+    const bounds = new google.maps.LatLngBounds();
+    let hasCoords = false;
+    subRoutes.forEach((route) => {
+      if (route.geometry?.coordinates?.length) {
+        (route.geometry.coordinates as [number, number][]).forEach(([lng, lat]) => {
+          bounds.extend({ lat, lng });
+          hasCoords = true;
+        });
+      }
+    });
+    if (hasCoords) {
+      map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
+      mainBuilderFitDoneRef.current = true;
+    }
+  }, [mode, builderMode, mapReady, savedRoutes]);
 
   // Zoom to selected route (works for both main routes and sub-routes)
   useEffect(() => {
