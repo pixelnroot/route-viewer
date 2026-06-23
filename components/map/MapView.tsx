@@ -6,6 +6,7 @@ import { Layers } from 'lucide-react';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { Button } from '@/components/ui/button';
 import type { PointType, RoutePoint, SavedRoute } from '@/types/routes';
+import { nearestCoordIndex } from '@/lib/utils';
 
 // Called once at module level — avoids "setOptions called multiple times" warning in StrictMode
 setOptions({
@@ -210,6 +211,7 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
   const suppressClickRef = useRef(false);
   const initialFitDoneRef = useRef(false);
   const mainBuilderFitDoneRef = useRef(false);
+  const trimMarkerRef = useRef<google.maps.Marker | null>(null);
 
   const [mapType, setMapType] = useState<MapType>('roadmap');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -232,6 +234,8 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     generatedGeometry,
     clickedCoord,
     mainRouteSubRouteIds,
+    mainRouteSegments,
+    trimTarget,
     selectRoute,
     addPointAtLatLng,
     addSubRouteToMain,
@@ -321,7 +325,11 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
         // If user clicked a Google Maps POI, let native info window open — don't intercept
         if (e.placeId) return;
         closePickerRef.current();
-        const { mode: m, builderMode: bm, addPointAtLatLng: add, setClickedCoord } = useRouteBuilderStore.getState();
+        const { mode: m, builderMode: bm, addPointAtLatLng: add, setClickedCoord, trimTarget, setTrimTarget } = useRouteBuilderStore.getState();
+        if (m === 'create' && bm === 'main' && trimTarget) {
+          setTrimTarget(null);
+          return;
+        }
         if (m === 'create' && bm !== 'main') {
           add(e.latLng!.lat(), e.latLng!.lng());
         } else {
@@ -346,6 +354,8 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       markersRef.current.clear();
       selectedSubPolyRef.current?.setMap(null);
       selectedSubPolyRef.current = null;
+      trimMarkerRef.current?.setMap(null);
+      trimMarkerRef.current = null;
       infoWindowRef.current?.close();
       mapRef.current = null;
       setMapReady(false);
@@ -402,6 +412,8 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     // Remove old polylines
     polylinesRef.current.forEach((p) => p.setMap(null));
     polylinesRef.current.clear();
+    trimMarkerRef.current?.setMap(null);
+    trimMarkerRef.current = null;
 
     if (mode !== 'create') {
       visibleRoutes.forEach((route) => {
@@ -470,36 +482,87 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       });
     }
 
-    // Main-route builder: draw all sub-routes, click to toggle membership
+    // Main-route builder: draw all sub-routes, click to toggle membership / pick trim points
     if (mode === 'create' && builderMode === 'main') {
       savedRoutes.filter((r) => r.type !== 'main').forEach((route) => {
         const geometry = route.geometry;
         if (!geometry?.coordinates?.length) return;
 
+        const coordsLngLat = geometry.coordinates as [number, number][];
         const isSelected = mainRouteSubRouteIds.includes(route.id);
-        const path = (geometry.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
+        const segment = mainRouteSegments[route.id];
+        const isTrimming = trimTarget?.routeId === route.id;
+        const path = coordsLngLat.map(([lng, lat]) => ({ lat, lng }));
+
+        const fullSelectedNoSegment = isSelected && !segment;
 
         const polyline = new google.maps.Polyline({
           path,
           geodesic: true,
-          strokeColor: isSelected ? '#dc2626' : route.color,
-          strokeOpacity: isSelected ? 1.0 : 0.6,
-          strokeWeight: isSelected ? 7 : 4,
+          strokeColor: fullSelectedNoSegment ? '#dc2626' : route.color,
+          strokeOpacity: fullSelectedNoSegment ? 1.0 : (isSelected ? 0.35 : 0.6),
+          strokeWeight: fullSelectedNoSegment ? 7 : 4,
           map,
-          zIndex: isSelected ? 10 : 1,
+          zIndex: fullSelectedNoSegment ? 10 : 1,
           clickable: true,
         });
 
-        polyline.addListener('click', () => {
+        polyline.addListener('click', (e: google.maps.PolyMouseEvent) => {
           suppressClickRef.current = true;
           setTimeout(() => { suppressClickRef.current = false; }, 0);
-          const { mainRouteSubRouteIds: ids, addSubRouteToMain: add, removeSubRouteFromMain: rm } =
-            useRouteBuilderStore.getState();
-          if (ids.includes(route.id)) rm(route.id);
-          else add(route.id);
+          const state = useRouteBuilderStore.getState();
+          if (state.trimTarget?.routeId === route.id && e.latLng) {
+            const idx = nearestCoordIndex(coordsLngLat, e.latLng.lat(), e.latLng.lng());
+            if (state.trimTarget.startIdx === null) {
+              state.setTrimTarget({ routeId: route.id, startIdx: idx });
+            } else {
+              const a = Math.min(state.trimTarget.startIdx, idx);
+              const b = Math.max(state.trimTarget.startIdx, idx);
+              state.setMainRouteSegment(route.id, a, b);
+              state.setTrimTarget(null);
+            }
+            return;
+          }
+          if (state.trimTarget) return;
+          if (state.mainRouteSubRouteIds.includes(route.id)) state.removeSubRouteFromMain(route.id);
+          else state.addSubRouteToMain(route.id);
         });
 
         polylinesRef.current.set(route.id, polyline);
+
+        if (segment) {
+          const segPath = path.slice(segment.startIdx, segment.endIdx + 1);
+          const segPolyline = new google.maps.Polyline({
+            path: segPath,
+            geodesic: true,
+            strokeColor: '#dc2626',
+            strokeOpacity: 1.0,
+            strokeWeight: 7,
+            map,
+            zIndex: 11,
+            clickable: false,
+          });
+          polylinesRef.current.set(`${route.id}__segment`, segPolyline);
+        }
+
+        if (isTrimming && trimTarget!.startIdx !== null) {
+          const startPt = path[trimTarget!.startIdx];
+          if (startPt) {
+            trimMarkerRef.current = new google.maps.Marker({
+              position: startPt,
+              map,
+              zIndex: 30,
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 7,
+                fillColor: '#dc2626',
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 2,
+              },
+            });
+          }
+        }
       });
     }
 
@@ -518,7 +581,7 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       });
       polylinesRef.current.set('__preview__', preview);
     }
-  }, [visibleRoutes, selectedRouteId, mode, builderMode, savedRoutes, mainRouteSubRouteIds, generatedGeometry, mapReady]);
+  }, [visibleRoutes, selectedRouteId, mode, builderMode, savedRoutes, mainRouteSubRouteIds, mainRouteSegments, trimTarget, generatedGeometry, mapReady]);
 
   // Sync markers
   useEffect(() => {

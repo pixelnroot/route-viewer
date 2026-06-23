@@ -338,6 +338,11 @@ export default function RouteDetailPanel() {
                     >
                       <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: sub.color }} />
                       <span className="text-sm font-medium flex-1 truncate" title={sub.name}>{sub.name}</span>
+                      {route.sub_route_segments?.[sub.id] && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 font-medium flex-shrink-0">
+                          Partial segment
+                        </span>
+                      )}
                       <span className="text-xs text-muted-foreground mr-1">{subPts.length} pts</span>
                       <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground transition-transform flex-shrink-0', isOpen && 'rotate-180')} />
                     </button>

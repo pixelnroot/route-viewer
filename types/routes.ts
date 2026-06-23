@@ -44,6 +44,7 @@ export interface SavedRoute extends RouteMeta {
   id: string;
   type?: RouteType;           // undefined = backward-compat sub-route
   sub_route_ids?: string[];   // ordered; only on main routes
+  sub_route_segments?: Record<string, { start_idx: number; end_idx: number }>; // partial-path trims; key = sub-route id, missing = full sub-route
   points: RoutePoint[];
   geometry: GeoJSON.LineString | null;
   created_at: string;

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  X, Layers, Save, Loader2, AlertCircle, Plus, Minus, GripVertical, MapPin, Trash2, Pencil,
+  X, Layers, Save, Loader2, AlertCircle, Plus, Minus, GripVertical, MapPin, Trash2, Pencil, Scissors, RotateCcw,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -26,30 +26,60 @@ import type { PointType, RoutePoint, SavedRoute } from '@/types/routes';
 import { fetchRouteGoogle } from '@/lib/routing/google-directions';
 
 function SortableSubRoute({
-  id, name, color, onRemove,
-}: { id: string; name: string; color: string; onRemove: () => void }) {
+  id, name, color, isPartial, isTrimming, onRemove, onTrim, onResetSegment, onCancelTrim,
+}: {
+  id: string; name: string; color: string;
+  isPartial: boolean; isTrimming: boolean;
+  onRemove: () => void; onTrim: () => void; onResetSegment: () => void; onCancelTrim: () => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
-      className="flex items-center gap-2 bg-card border border-border rounded-lg p-3 min-h-[52px]"
+      className="flex flex-col gap-1.5 bg-card border border-border rounded-lg p-3 min-h-[52px]"
     >
-      <button
-        {...attributes}
-        {...listeners}
-        className="text-muted-foreground hover:text-foreground cursor-grab touch-none min-w-[44px] min-h-[44px] flex items-center justify-center -ml-1"
-      >
-        <GripVertical className="w-5 h-5" />
-      </button>
-      <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-      <span className="text-sm font-medium flex-1 break-words line-clamp-3">{name}</span>
-      <button
-        onClick={onRemove}
-        className="text-muted-foreground hover:text-destructive flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center -mr-1"
-      >
-        <Minus className="w-4 h-4" />
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          {...attributes}
+          {...listeners}
+          className="text-muted-foreground hover:text-foreground cursor-grab touch-none min-w-[44px] min-h-[44px] flex items-center justify-center -ml-1"
+        >
+          <GripVertical className="w-5 h-5" />
+        </button>
+        <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+        <span className="text-sm font-medium flex-1 break-words line-clamp-3">{name}</span>
+        {isPartial && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 font-medium flex-shrink-0">
+            Partial
+          </span>
+        )}
+        <button
+          onClick={onRemove}
+          className="text-muted-foreground hover:text-destructive flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center -mr-1"
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+      </div>
+      {isTrimming ? (
+        <div className="flex items-center gap-2 pl-1">
+          <p className="text-[10px] text-muted-foreground flex-1">Click 2 points on its line on the map…</p>
+          <button onClick={onCancelTrim} className="text-xs text-muted-foreground hover:underline flex-shrink-0">
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 pl-1">
+          <button onClick={onTrim} className="flex items-center gap-1 text-xs text-primary hover:underline">
+            <Scissors className="w-3 h-3" /> Trim on map
+          </button>
+          {isPartial && (
+            <button onClick={onResetSegment} className="flex items-center gap-1 text-xs text-muted-foreground hover:underline">
+              <RotateCcw className="w-3 h-3" /> Reset to full
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -60,6 +90,7 @@ export default function MainRouteBuilder() {
     addSubRouteToMain, removeSubRouteFromMain, reorderMainSubRoutes,
     setMainRouteMeta, setMode, addSavedRoute, updateSavedRoute,
     selectRoute, resetMainBuilder, resetBuilder, clickedCoord,
+    mainRouteSegments, trimTarget, setTrimTarget, clearMainRouteSegment,
   } = useRouteBuilderStore();
   const { editKey, setEditKey } = useAuthStore();
 
@@ -203,12 +234,16 @@ export default function MainRouteBuilder() {
         }
       };
 
+      const segmentCoords = (r: SavedRoute): [number, number][] => {
+        const all = (r.geometry?.coordinates ?? []) as [number, number][];
+        const seg = mainRouteSegments[r.id];
+        return seg ? all.slice(seg.startIdx, seg.endIdx + 1) : all;
+      };
+
       let combinedGeometry: GeoJSON.LineString | null = null;
 
       if (manualPoints.length === 0) {
-        const coords = selectedSubRoutes.flatMap(
-          (r) => (r.geometry?.coordinates ?? []) as [number, number][]
-        );
+        const coords = selectedSubRoutes.flatMap(segmentCoords);
         combinedGeometry = coords.length > 0 ? { type: 'LineString', coordinates: coords } : null;
       } else {
         const directByPos = new globalThis.Map<string, RoutePoint[]>();
@@ -239,7 +274,7 @@ export default function MainRouteBuilder() {
 
         for (let i = 0; i < selectedSubRoutes.length; i++) {
           const sub = selectedSubRoutes[i];
-          const subCoords = (sub.geometry?.coordinates ?? []) as [number, number][];
+          const subCoords = segmentCoords(sub);
           if (!subCoords.length) { lastWasWaypoint = false; continue; }
 
           if (!allCoords.length) {
@@ -268,9 +303,16 @@ export default function MainRouteBuilder() {
         combinedGeometry = allCoords.length > 0 ? { type: 'LineString', coordinates: allCoords } : null;
       }
 
+      const sub_route_segments = Object.fromEntries(
+        Object.entries(mainRouteSegments)
+          .filter(([id]) => mainRouteSubRouteIds.includes(id))
+          .map(([id, seg]) => [id, { start_idx: seg.startIdx, end_idx: seg.endIdx }])
+      );
+
       const body = {
         type: 'main' as const,
         sub_route_ids: mainRouteSubRouteIds,
+        sub_route_segments,
         name: effectiveName,
         description: mainRouteMeta.description ?? '',
         color: mainRouteMeta.color ?? '#3b82f6',
@@ -348,7 +390,12 @@ export default function MainRouteBuilder() {
                         id={r.id}
                         name={r.name}
                         color={r.color}
+                        isPartial={!!mainRouteSegments[r.id]}
+                        isTrimming={trimTarget?.routeId === r.id}
                         onRemove={() => removeSubRouteFromMain(r.id)}
+                        onTrim={() => setTrimTarget({ routeId: r.id, startIdx: null })}
+                        onResetSegment={() => clearMainRouteSegment(r.id)}
+                        onCancelTrim={() => setTrimTarget(null)}
                       />
                     ))}
                   </div>

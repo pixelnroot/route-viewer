@@ -36,11 +36,16 @@ interface RouteBuilderState {
   // main route builder
   mainRouteSubRouteIds: string[];
   mainRouteMeta: Partial<RouteMeta>;
+  mainRouteSegments: Record<string, { startIdx: number; endIdx: number }>;
+  trimTarget: { routeId: string; startIdx: number | null } | null;
   setBuilderMode: (mode: BuilderMode) => void;
   setMainRouteMeta: (patch: Partial<RouteMeta>) => void;
   addSubRouteToMain: (id: string) => void;
   removeSubRouteFromMain: (id: string) => void;
   reorderMainSubRoutes: (orderedIds: string[]) => void;
+  setMainRouteSegment: (id: string, startIdx: number, endIdx: number) => void;
+  clearMainRouteSegment: (id: string) => void;
+  setTrimTarget: (t: { routeId: string; startIdx: number | null } | null) => void;
   resetMainBuilder: () => void;
 
   // map fly-to trigger
@@ -139,6 +144,8 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
       editingRouteId: null,
       mainRouteSubRouteIds: [],
       mainRouteMeta: { ...DEFAULT_META },
+      mainRouteSegments: {},
+      trimTarget: null,
       categories: [],
       categoryFilter: null,
       showCheckposts: true,
@@ -185,6 +192,13 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
           builderMode: 'main',
           editingRouteId: route.id,
           mainRouteSubRouteIds: route.sub_route_ids ?? [],
+          mainRouteSegments: Object.fromEntries(
+            Object.entries(route.sub_route_segments ?? {}).map(([id, seg]) => [
+              id,
+              { startIdx: seg.start_idx, endIdx: seg.end_idx },
+            ])
+          ),
+          trimTarget: null,
           mainRouteMeta: {
             name: route.name,
             description: route.description,
@@ -207,16 +221,36 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
         })),
 
       removeSubRouteFromMain: (id) =>
-        set((s) => ({
-          mainRouteSubRouteIds: s.mainRouteSubRouteIds.filter((rid) => rid !== id),
-        })),
+        set((s) => {
+          const { [id]: _removed, ...restSegments } = s.mainRouteSegments;
+          return {
+            mainRouteSubRouteIds: s.mainRouteSubRouteIds.filter((rid) => rid !== id),
+            mainRouteSegments: restSegments,
+            trimTarget: s.trimTarget?.routeId === id ? null : s.trimTarget,
+          };
+        }),
 
       reorderMainSubRoutes: (orderedIds) => set({ mainRouteSubRouteIds: orderedIds }),
+
+      setMainRouteSegment: (id, startIdx, endIdx) =>
+        set((s) => ({
+          mainRouteSegments: { ...s.mainRouteSegments, [id]: { startIdx, endIdx } },
+        })),
+
+      clearMainRouteSegment: (id) =>
+        set((s) => {
+          const { [id]: _removed, ...rest } = s.mainRouteSegments;
+          return { mainRouteSegments: rest };
+        }),
+
+      setTrimTarget: (t) => set({ trimTarget: t }),
 
       resetMainBuilder: () =>
         set({
           mainRouteSubRouteIds: [],
           mainRouteMeta: { ...DEFAULT_META },
+          mainRouteSegments: {},
+          trimTarget: null,
         }),
 
       addPoint: (point) =>
@@ -332,6 +366,8 @@ export const useRouteBuilderStore = create<RouteBuilderState>()(
           editingRouteId: null,
           mainRouteSubRouteIds: [],
           mainRouteMeta: { ...DEFAULT_META },
+          mainRouteSegments: {},
+          trimTarget: null,
         }),
     }),
     {
