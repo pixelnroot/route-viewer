@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 import { Layers } from 'lucide-react';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
+import { useRouteFinderStore } from '@/lib/store/route-finder-store';
 import { Button } from '@/components/ui/button';
 import type { PointType, RoutePoint, SavedRoute } from '@/types/routes';
 import { nearestCoordIndex } from '@/lib/utils';
@@ -213,6 +214,9 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
   const mainBuilderFitDoneRef = useRef(false);
   const trimMarkerRef = useRef<google.maps.Marker | null>(null);
 
+  const finderPolylinesRef = useRef<globalThis.Map<string, google.maps.Polyline>>(new globalThis.Map());
+  const finderMarkersRef = useRef<google.maps.Marker[]>([]);
+
   const [mapType, setMapType] = useState<MapType>('roadmap');
   const [menuOpen, setMenuOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
@@ -243,10 +247,19 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     updatePoint,
   } = useRouteBuilderStore();
 
+  const {
+    finderResults,
+    finderActiveIdx,
+    finderLocations,
+    finderStartId,
+    finderEndId,
+  } = useRouteFinderStore();
+
   const visibleRoutes = savedRoutes.filter(r => {
+    if (!adminMode) return false; // Public: empty map by default; finder/selectedSubPoly handles display
+    // Admin: only show main routes (and only the selected one while in builder)
     if (r.type !== 'main') return false;
-    // In admin mode: only draw the selected main route; everything else stays hidden
-    if (adminMode && r.id !== selectedRouteId) return false;
+    if (r.id !== selectedRouteId && mode !== 'create') return false;
     if (categoryFilter && r.category_id !== categoryFilter) return false;
     if (sidebarCheckpostFilter === 'with' && r.has_checkpost !== true) return false;
     if (sidebarCheckpostFilter === 'without' && r.has_checkpost === true) return false;
@@ -257,31 +270,34 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     ? builderPoints
     : (() => {
         if (!selectedRouteId) {
-          // No route selected — show all points from all visible routes
           const seen = new globalThis.Set<string>();
           const all: RoutePoint[] = [];
-          for (const route of visibleRoutes) {
-            const subIds = route.sub_route_ids ?? [];
-            for (const id of subIds) {
-              const sub = savedRoutes.find(r => r.id === id);
-              for (const pt of (sub?.points ?? [])) {
+          if (!adminMode) {
+            // Public: empty map by default — no markers until a route is selected
+          } else {
+            // Admin: collect from main routes + their sub-routes
+            for (const route of visibleRoutes) {
+              const subIds = route.sub_route_ids ?? [];
+              for (const id of subIds) {
+                const sub = savedRoutes.find(r => r.id === id);
+                for (const pt of (sub?.points ?? [])) {
+                  if (!seen.has(pt.id)) { seen.add(pt.id); all.push(pt); }
+                }
+              }
+              for (const pt of (route.points ?? [])) {
                 if (!seen.has(pt.id)) { seen.add(pt.id); all.push(pt); }
               }
-            }
-            for (const pt of (route.points ?? [])) {
-              if (!seen.has(pt.id)) { seen.add(pt.id); all.push(pt); }
             }
           }
           return showCheckposts ? all : all.filter(p => p.type !== 'poi');
         }
         const sel = savedRoutes.find(r => r.id === selectedRouteId);
         if (!sel) return [];
-        // Sub-route: show its own points
+        // Sub-route or public selection: show ALL points (always, no checkpost filter in public)
         if (sel.type !== 'main') {
-          const pts = [...sel.points].sort((a, b) => a.order - b.order);
-          return showCheckposts ? pts : pts.filter(p => p.type !== 'poi');
+          return [...sel.points].sort((a, b) => a.order - b.order);
         }
-        // Main route: combine direct points + deduped sub-route points
+        // Admin main route: combine direct points + deduped sub-route points
         const subIds = sel.sub_route_ids ?? [];
         const subPtsDeduped: RoutePoint[] = [];
         subIds.forEach((id, idx) => {
@@ -352,6 +368,10 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       polylinesRef.current.clear();
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current.clear();
+      finderPolylinesRef.current.forEach((p) => p.setMap(null));
+      finderPolylinesRef.current.clear();
+      finderMarkersRef.current.forEach((m) => m.setMap(null));
+      finderMarkersRef.current = [];
       selectedSubPolyRef.current?.setMap(null);
       selectedSubPolyRef.current = null;
       trimMarkerRef.current?.setMap(null);
@@ -362,12 +382,13 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Draw selected sub-route polyline (sub-routes are hidden from main map; show only when selected)
+  // Draw selected sub-route polyline (suppressed while finder results are on screen)
   useEffect(() => {
     const map = mapRef.current;
     selectedSubPolyRef.current?.setMap(null);
     selectedSubPolyRef.current = null;
-    if (!map || !mapReady || !selectedRouteId) return;
+    // Finder results already draw the correct sliced geometry; don't overlay the full sub-route on top
+    if (!map || !mapReady || !selectedRouteId || finderResults.length > 0) return;
     const sel = savedRoutes.find((r) => r.id === selectedRouteId);
     if (!sel || sel.type === 'main') return;
     const coords = sel.geometry?.coordinates;
@@ -383,7 +404,7 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       zIndex: 15,
       clickable: false,
     });
-  }, [selectedRouteId, mapReady, savedRoutes]);
+  }, [selectedRouteId, mapReady, savedRoutes, finderResults.length]);
 
   // Map type change
   useEffect(() => {
@@ -415,9 +436,9 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     trimMarkerRef.current?.setMap(null);
     trimMarkerRef.current = null;
 
-    if (mode !== 'create') {
+    if (mode !== 'create' && finderResults.length === 0) {
       visibleRoutes.forEach((route) => {
-        const geometry = getDisplayGeometry(route, savedRoutes);
+        const geometry = adminMode ? getDisplayGeometry(route, savedRoutes) : route.geometry;
         if (!geometry?.coordinates?.length) return;
 
         const isSelected = route.id === selectedRouteId;
@@ -434,39 +455,50 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
           clickable: true,
         });
 
-        polyline.addListener('click', (e: google.maps.MapMouseEvent) => {
-          suppressClickRef.current = true;
-          setTimeout(() => { suppressClickRef.current = false; }, 0);
-          infoWindowRef.current?.close();
-
-          const dom = e.domEvent as MouseEvent;
-          const rect = mapContainer.current?.getBoundingClientRect();
-          const px = rect ? dom.clientX - rect.left : dom.clientX;
-          const py = rect ? dom.clientY - rect.top : dom.clientY;
-
-          const { savedRoutes: sr, categoryFilter: cf, sidebarCheckpostFilter: scf } = useRouteBuilderStore.getState();
-          const allVisible = sr.filter((r) => {
-            if (r.type !== 'main') return false;
-            if (cf && r.category_id !== cf) return false;
-            if (scf === 'with' && r.has_checkpost !== true) return false;
-            if (scf === 'without' && r.has_checkpost === true) return false;
-            return true;
+        if (!adminMode) {
+          // Public: simple click → select sub-route, no picker
+          polyline.addListener('click', () => {
+            suppressClickRef.current = true;
+            setTimeout(() => { suppressClickRef.current = false; }, 0);
+            infoWindowRef.current?.close();
+            useRouteBuilderStore.getState().selectRoute(route.id);
           });
+        } else {
+          // Admin: existing picker logic for overlapping main routes
+          polyline.addListener('click', (e: google.maps.MapMouseEvent) => {
+            suppressClickRef.current = true;
+            setTimeout(() => { suppressClickRef.current = false; }, 0);
+            infoWindowRef.current?.close();
 
-          const latlng = e.latLng!;
-          const near = allVisible.filter((r) => {
-            const geo = getDisplayGeometry(r, sr);
-            return geo ? isNearGeometry(latlng.lat(), latlng.lng(), geo) : false;
+            const dom = e.domEvent as MouseEvent;
+            const rect = mapContainer.current?.getBoundingClientRect();
+            const px = rect ? dom.clientX - rect.left : dom.clientX;
+            const py = rect ? dom.clientY - rect.top : dom.clientY;
+
+            const { savedRoutes: sr, categoryFilter: cf, sidebarCheckpostFilter: scf } = useRouteBuilderStore.getState();
+            const allVisible = sr.filter((r) => {
+              if (r.type !== 'main') return false;
+              if (cf && r.category_id !== cf) return false;
+              if (scf === 'with' && r.has_checkpost !== true) return false;
+              if (scf === 'without' && r.has_checkpost === true) return false;
+              return true;
+            });
+
+            const latlng = e.latLng!;
+            const near = allVisible.filter((r) => {
+              const geo = getDisplayGeometry(r, sr);
+              return geo ? isNearGeometry(latlng.lat(), latlng.lng(), geo) : false;
+            });
+
+            if (near.length <= 1) {
+              useRouteBuilderStore.getState().selectRoute(near[0]?.id ?? route.id);
+              closePickerRef.current();
+            } else {
+              setPickerRoutes(near);
+              setPickerPos({ x: px, y: py });
+            }
           });
-
-          if (near.length <= 1) {
-            useRouteBuilderStore.getState().selectRoute(near[0]?.id ?? route.id);
-            closePickerRef.current();
-          } else {
-            setPickerRoutes(near);
-            setPickerPos({ x: px, y: py });
-          }
-        });
+        }
 
         polyline.addListener('mouseover', () => {
           if (useRouteBuilderStore.getState().mode !== 'create') {
@@ -581,7 +613,7 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       });
       polylinesRef.current.set('__preview__', preview);
     }
-  }, [visibleRoutes, selectedRouteId, mode, builderMode, savedRoutes, mainRouteSubRouteIds, mainRouteSegments, trimTarget, generatedGeometry, mapReady]);
+  }, [visibleRoutes, selectedRouteId, mode, builderMode, savedRoutes, mainRouteSubRouteIds, mainRouteSegments, trimTarget, generatedGeometry, mapReady, finderResults.length]);
 
   // Sync markers
   useEffect(() => {
@@ -718,12 +750,110 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     map.fitBounds(bounds, { top: 120, right: 60, bottom: 60, left: 60 });
   }, [selectedRouteId, savedRoutes]);
 
+  // Render route finder results
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    finderPolylinesRef.current.forEach((p) => p.setMap(null));
+    finderPolylinesRef.current.clear();
+    finderMarkersRef.current.forEach((m) => m.setMap(null));
+    finderMarkersRef.current = [];
+
+    if (finderResults.length === 0) return;
+
+    // Dim sub-routes as context
+    savedRoutes
+      .filter((r) => (!r.type || r.type === 'sub') && r.geometry?.coordinates?.length)
+      .forEach((route) => {
+        const path = (route.geometry!.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
+        const poly = new google.maps.Polyline({
+          path, geodesic: true, strokeColor: route.color,
+          strokeOpacity: 0.2, strokeWeight: 2, map, zIndex: 0, clickable: false,
+        });
+        finderPolylinesRef.current.set(`ctx__${route.id}`, poly);
+      });
+
+    // Draw each finder alternative — active is bold, others are thin but clickable
+    finderResults.forEach((route, routeIdx) => {
+      const isActive = routeIdx === finderActiveIdx;
+      route.segments.forEach((seg, segIdx) => {
+        const coords = seg.geometry.coordinates as [number, number][];
+        const path = coords.map(([lng, lat]) => ({ lat, lng }));
+        const isBridge = seg.type === 'bridge';
+        const poly = new google.maps.Polyline({
+          path, geodesic: true,
+          strokeColor: isActive ? (isBridge ? '#f97316' : '#ef4444') : '#16a34a',
+          strokeOpacity: isActive ? 1.0 : 0.65,
+          strokeWeight: isActive ? (isBridge ? 4 : 7) : 5,
+          map, zIndex: isActive ? (isBridge ? 8 : 10) : 2,
+          clickable: !isActive,
+        });
+        if (!isActive) {
+          // Invisible wide hit-area polyline so inactive routes are easy to tap
+          const hitArea = new google.maps.Polyline({
+            path, geodesic: true,
+            strokeColor: '#000000', strokeOpacity: 0, strokeWeight: 24,
+            map, zIndex: 3, clickable: true,
+          });
+          hitArea.addListener('click', () => {
+            useRouteFinderStore.getState().setFinderActiveIdx(routeIdx);
+          });
+          hitArea.addListener('mouseover', () => {
+            poly.setOptions({ strokeOpacity: 1.0, strokeWeight: 7 });
+            map.setOptions({ draggableCursor: 'pointer' });
+          });
+          hitArea.addListener('mouseout', () => {
+            poly.setOptions({ strokeOpacity: 0.65, strokeWeight: 5 });
+            map.setOptions({ draggableCursor: null });
+          });
+          poly.addListener('click', () => {
+            useRouteFinderStore.getState().setFinderActiveIdx(routeIdx);
+          });
+          finderPolylinesRef.current.set(`hit_${routeIdx}_${segIdx}`, hitArea);
+        }
+        finderPolylinesRef.current.set(`res_${routeIdx}_${segIdx}`, poly);
+      });
+    });
+
+    // Start pin (green) and end pin (red)
+    const startLoc = finderLocations.find((l) => l.id === finderStartId);
+    const endLoc = finderLocations.find((l) => l.id === finderEndId);
+    const pinDefs = [
+      { loc: startLoc, color: '#22c55e' },
+      { loc: endLoc, color: '#ef4444' },
+    ];
+    pinDefs.forEach(({ loc, color }) => {
+      if (!loc) return;
+      const m = new google.maps.Marker({
+        position: { lat: loc.lat, lng: loc.lng }, map, zIndex: 200,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE, scale: 10,
+          fillColor: color, fillOpacity: 1,
+          strokeColor: '#ffffff', strokeWeight: 2,
+        },
+      });
+      finderMarkersRef.current.push(m);
+    });
+
+    // Fit to all routes so user can see every alternative on the map
+    const bounds = new google.maps.LatLngBounds();
+    let hasBounds = false;
+    finderResults.forEach((route) => {
+      (route.geometry.coordinates as [number, number][]).forEach(([lng, lat]) => {
+        bounds.extend({ lat, lng });
+        hasBounds = true;
+      });
+    });
+    if (hasBounds) map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 360 });
+  }, [finderResults, finderActiveIdx, finderLocations, finderStartId, finderEndId, mapReady, savedRoutes]);
+
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
 
-      {/* Route picker — shown when multiple routes overlap at click point */}
-      {pickerRoutes.length > 1 && pickerPos && (
+      {/* Route picker — admin only, shown when multiple main routes overlap at click point */}
+      {adminMode && pickerRoutes.length > 1 && pickerPos && (
         <div
           className="absolute z-50 bg-background border border-border rounded-lg shadow-xl p-1.5 min-w-[220px] max-w-[320px] max-h-[300px] flex flex-col"
           style={{ left: pickerPos.x + 8, top: pickerPos.y - 8 }}

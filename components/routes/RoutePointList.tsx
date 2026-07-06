@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
+import { useRouteFinderStore } from '@/lib/store/route-finder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import type { RoutePoint, PointType } from '@/types/routes';
 
@@ -86,7 +87,34 @@ function SortablePoint({
   const [splitName, setSplitName] = useState('');
   const [splitTargetId, setSplitTargetId] = useState('');
   const [splitting, setSplitting] = useState(false);
+  const [savingFinder, setSavingFinder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-saves showInFinder toggle directly to DB — no full Save Route click needed
+  const handleToggleShowInFinder = async () => {
+    if (!editingRouteId || !editKey || savingFinder) return;
+    const newVal = !(point.showInFinder ?? false);
+    updatePoint(point.id, { showInFinder: newVal }); // instant UI
+    setSavingFinder(true);
+    try {
+      const { points: currentPoints } = useRouteBuilderStore.getState();
+      const updatedPoints = currentPoints.map((p) =>
+        p.id === point.id ? { ...p, showInFinder: newVal } : p
+      );
+      const res = await fetch(`/api/routes/${editingRouteId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${editKey}` },
+        body: JSON.stringify({ points: updatedPoints }),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        updateSavedRoute(saved);
+        useRouteFinderStore.getState().setFinderLocations([]); // force finder to re-fetch
+      }
+    } catch { /* silent */ } finally {
+      setSavingFinder(false);
+    }
+  };
 
   // Sync expand state when collapse-all / expand-all is triggered
   useEffect(() => {
@@ -309,6 +337,26 @@ function SortablePoint({
               <SelectItem value="destination">Destination</SelectItem>
             </SelectContent>
           </Select>
+
+          {/* Show in Find Route dropdown toggle — auto-saves to DB immediately */}
+          <button
+            type="button"
+            onClick={handleToggleShowInFinder}
+            disabled={savingFinder || !editingRouteId}
+            className={cn(
+              'w-full h-7 text-[10px] font-medium rounded border transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50',
+              (point.showInFinder ?? false)
+                ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/20'
+                : 'border-border text-muted-foreground hover:bg-accent/50'
+            )}
+          >
+            {savingFinder ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <span className={cn('w-2 h-2 rounded-full', (point.showInFinder ?? false) ? 'bg-primary' : 'bg-muted-foreground/40')} />
+            )}
+            {(point.showInFinder ?? false) ? 'Shown in Find Route' : 'Hidden from Find Route'}
+          </button>
 
           <div className="grid grid-cols-2 gap-1">
             <Input

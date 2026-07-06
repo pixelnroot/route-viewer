@@ -16,6 +16,20 @@ const POINT_TYPE_COLORS: Record<PointType, string> = {
   destination: 'bg-red-500',
 };
 
+function pointDotClass(pt: RoutePoint): string {
+  if (pt.type === 'poi') {
+    const map: Record<string, string> = {
+      checkpost: 'bg-red-500',
+      mosque: 'bg-purple-500',
+      school: 'bg-cyan-500',
+      hospital: 'bg-orange-500',
+      other: 'bg-yellow-500',
+    };
+    return pt.category ? (map[pt.category] ?? 'bg-yellow-500') : 'bg-yellow-500';
+  }
+  return POINT_TYPE_COLORS[pt.type];
+}
+
 function ptDistM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371000;
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -97,6 +111,12 @@ export default function RouteDetailPanel() {
 
   const mainVisiblePoints = mainPointsWithSource;
 
+  // Computed before null guard so hooks can reference them
+  const isMainRoute = route?.type === 'main';
+  const subAllPoints = [...(route?.points ?? [])].sort((a, b) => a.order - b.order);
+  const presentationPoints: (RoutePoint & { _subRouteName?: string; _subRouteColor?: string })[] =
+    isMainRoute ? mainVisiblePoints : subAllPoints;
+
   useEffect(() => {
     setPresentationActive(false);
     setPresentationIdx(0);
@@ -106,35 +126,34 @@ export default function RouteDetailPanel() {
   }, [selectedRouteId]);
 
   useEffect(() => {
-    if (!autoPlay || !presentationActive || mainVisiblePoints.length === 0) return;
-    if (presentationIdx >= mainVisiblePoints.length - 1) {
+    if (!autoPlay || !presentationActive || presentationPoints.length === 0) return;
+    if (presentationIdx >= presentationPoints.length - 1) {
       setAutoPlay(false);
       return;
     }
     const timer = setTimeout(() => {
       const next = presentationIdx + 1;
       setPresentationIdx(next);
-      const pt = mainVisiblePoints[next];
+      const pt = presentationPoints[next];
       useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng);
     }, 3000);
     return () => clearTimeout(timer);
-  }, [autoPlay, presentationActive, presentationIdx, mainVisiblePoints.length]);
+  }, [autoPlay, presentationActive, presentationIdx, presentationPoints.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const goToPoint = (idx: number) => {
-    const clamped = Math.max(0, Math.min(mainVisiblePoints.length - 1, idx));
+    const clamped = Math.max(0, Math.min(presentationPoints.length - 1, idx));
     setPresentationIdx(clamped);
-    const pt = mainVisiblePoints[clamped];
+    const pt = presentationPoints[clamped];
     if (pt) useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng);
   };
 
   if (!route) return null;
 
-  const isMainRoute = route.type === 'main';
   const category = route.category_id ? categories.find((c) => c.id === route.category_id) : null;
 
   // ── Main route panel ─────────────────────────────────────────────────────────
   if (isMainRoute) {
-    const currentPt = presentationActive ? mainVisiblePoints[presentationIdx] : null;
+    const currentPt = presentationActive ? presentationPoints[presentationIdx] : null;
 
     return (
       <div className="flex flex-col h-full bg-background border-l border-border w-96">
@@ -199,7 +218,7 @@ export default function RouteDetailPanel() {
             {/* Step indicator */}
             <div className="flex items-center gap-2 mb-4 flex-shrink-0">
               <span className="text-xs text-muted-foreground">
-                Step {presentationIdx + 1} of {mainVisiblePoints.length}
+                Step {presentationIdx + 1} of {presentationPoints.length}
               </span>
               <span
                 className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
@@ -250,9 +269,9 @@ export default function RouteDetailPanel() {
             </ScrollArea>
 
             {/* Progress dots */}
-            {mainVisiblePoints.length <= 20 && (
+            {presentationPoints.length <= 20 && (
               <div className="flex justify-center gap-1 py-3 flex-wrap flex-shrink-0">
-                {mainVisiblePoints.map((_, i) => (
+                {presentationPoints.map((_, i) => (
                   <button
                     key={i}
                     onClick={() => goToPoint(i)}
@@ -292,7 +311,7 @@ export default function RouteDetailPanel() {
 
               <button
                 onClick={() => goToPoint(presentationIdx + 1)}
-                disabled={presentationIdx === mainVisiblePoints.length - 1}
+                disabled={presentationIdx === presentationPoints.length - 1}
                 className="flex-1 h-12 flex items-center justify-center gap-1.5 rounded-xl border border-border text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-40 touch-manipulation"
               >
                 Next <ChevronRight className="w-4 h-4" />
@@ -428,12 +447,12 @@ export default function RouteDetailPanel() {
                 <p className="text-sm text-foreground leading-relaxed">{route.description}</p>
               )}
 
-              {mainVisiblePoints.length > 0 && (
+              {presentationPoints.length > 0 && (
                 <button
                   onClick={() => {
                     setPresentationIdx(0);
                     setPresentationActive(true);
-                    const pt = mainVisiblePoints[0];
+                    const pt = presentationPoints[0];
                     if (pt) useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng);
                   }}
                   className="w-full flex items-center justify-center gap-2 h-12 rounded-xl bg-primary/10 text-primary border border-primary/20 text-base font-semibold hover:bg-primary/20 transition-colors touch-manipulation"
@@ -559,132 +578,168 @@ export default function RouteDetailPanel() {
     );
   }
 
-  // ── Sub-route panel (admin/edit only) ─────────────────────────────────────────
-  const allSorted = [...route.points].sort((a, b) => a.order - b.order);
-  const subHasCheckposts = allSorted.some(p => p.type === 'poi');
-  const sorted = showCheckposts ? allSorted : allSorted.filter(p => p.type !== 'poi');
+  // ── Sub-route panel ───────────────────────────────────────────────────────────
+  const subCurrentPt = presentationActive ? subAllPoints[presentationIdx] : null;
 
   return (
     <div className="flex flex-col h-full bg-background border-l border-border w-96">
       {/* Header */}
       <div className="flex items-start justify-between px-4 py-3 border-b border-border flex-shrink-0">
         <div className="flex items-start gap-2 min-w-0 flex-1 mr-2">
-          <div
-            className="w-3.5 h-3.5 rounded-full flex-shrink-0 mt-1"
-            style={{ backgroundColor: route.color }}
-          />
-          <span className="font-bold text-base text-foreground leading-snug">{route.name}</span>
+          <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: route.color }} />
+          <div className="min-w-0">
+            <span className="font-bold text-base text-foreground leading-snug">{route.name}</span>
+            <p className="text-xs text-muted-foreground mt-0.5">{subAllPoints.length} points</p>
+          </div>
         </div>
-        <button
-          onClick={() => selectRoute(null)}
-          className="text-foreground/60 hover:text-foreground flex-shrink-0"
-          aria-label="Close"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {presentationActive && (
+            <button
+              onClick={() => { setPresentationActive(false); setAutoPlay(false); }}
+              className="text-xs px-2 py-0.5 rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              Exit
+            </button>
+          )}
+          <button onClick={() => selectRoute(null)} className="text-foreground/60 hover:text-foreground" aria-label="Close">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
-      {/* Checkpost filter */}
-      {subHasCheckposts && (
-        <div className="px-4 py-2.5 border-b border-border flex-shrink-0 flex gap-2">
-          <button
-            onClick={() => setShowCheckposts(true)}
-            className={cn(
-              'text-sm px-4 py-2 min-h-[44px] rounded-full border font-medium transition-colors touch-manipulation',
-              showCheckposts
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'border-border text-muted-foreground hover:bg-accent'
-            )}
-          >
-            With Checkpost
-          </button>
-          <button
-            onClick={() => setShowCheckposts(false)}
-            className={cn(
-              'text-sm px-4 py-2 min-h-[44px] rounded-full border font-medium transition-colors touch-manipulation',
-              !showCheckposts
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'border-border text-muted-foreground hover:bg-accent'
-            )}
-          >
-            Without
-          </button>
-        </div>
-      )}
+      {/* Presentation mode */}
+      {presentationActive && subCurrentPt ? (
+        <div className="flex-1 flex flex-col p-4 min-h-0 overflow-hidden">
+          <div className="flex items-center gap-2 mb-4 flex-shrink-0">
+            <span className="text-xs text-muted-foreground">
+              Step {presentationIdx + 1} of {subAllPoints.length}
+            </span>
+          </div>
 
-      <ScrollArea className="flex-1 min-h-0 overflow-hidden">
-        <div className="p-4 space-y-4">
-          {/* Badges */}
-          {category && (
-            <div className="flex flex-wrap gap-1.5">
-              <Badge
-                variant="outline"
-                className="font-semibold text-sm"
-                style={{ borderColor: category.color, color: category.color }}
-              >
-                {category.name}
-              </Badge>
-            </div>
-          )}
-
-          {route.description && (
-            <p className="text-sm text-foreground leading-relaxed">{route.description}</p>
-          )}
-
-          <Separator />
-
-          {/* Points */}
-          <section>
-            <p className="text-sm font-bold text-foreground uppercase tracking-wider mb-3">
-              Route Points ({sorted.length}{!showCheckposts && subHasCheckposts ? ` of ${allSorted.length}` : ''})
-            </p>
-            <div className="space-y-4">
-              {sorted.map((pt, i) => (
-                <div key={pt.id} className="flex items-start gap-3">
-                  <div className="flex flex-col items-center flex-shrink-0">
-                    <div
-                      className={`w-6 h-6 rounded-full ${POINT_TYPE_COLORS[pt.type]} flex items-center justify-center text-white text-xs font-bold`}
-                    >
-                      {pt.icon ?? (i + 1)}
-                    </div>
-                    {i < sorted.length - 1 && (
-                      <div className="w-px h-5 bg-border mt-1" />
-                    )}
-                  </div>
-                  <div className="pb-1 min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-foreground">{pt.label}</p>
-                    {pt.category && (
-                      <p className="text-xs text-foreground/70 capitalize mt-0.5">{pt.category}</p>
-                    )}
-                    <p className="text-xs text-foreground/60 font-mono mt-0.5">
-                      {pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}
-                    </p>
-                    {pt.note && (
-                      <p className="text-sm text-foreground italic mt-1 leading-snug">
-                        {pt.note}
-                      </p>
-                    )}
-                    {pt.imageUrl && (
-                      <img
-                        src={pt.imageUrl}
-                        alt={pt.label}
-                        className="mt-2 w-full rounded-md object-cover max-h-40"
-                      />
-                    )}
-                  </div>
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="space-y-3 pr-2">
+              <div className="flex items-center gap-3">
+                <div className={`w-12 h-12 rounded-full ${pointDotClass(subCurrentPt)} flex items-center justify-center text-white text-base font-bold flex-shrink-0`}>
+                  {subCurrentPt.icon ?? (presentationIdx + 1)}
                 </div>
+                <div>
+                  <p className="font-bold text-xl text-foreground leading-tight">{subCurrentPt.label}</p>
+                  {subCurrentPt.category && (
+                    <p className="text-xs text-foreground/70 capitalize mt-0.5">{subCurrentPt.category}</p>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-foreground/60 font-mono">
+                {subCurrentPt.lat.toFixed(5)}, {subCurrentPt.lng.toFixed(5)}
+              </p>
+              {subCurrentPt.note && (
+                <p className="text-sm text-foreground italic leading-snug">{subCurrentPt.note}</p>
+              )}
+              {subCurrentPt.imageUrl && (
+                <img src={subCurrentPt.imageUrl} alt={subCurrentPt.label} className="w-full rounded-md object-cover max-h-52" />
+              )}
+            </div>
+          </ScrollArea>
+
+          {subAllPoints.length <= 20 && (
+            <div className="flex justify-center gap-1 py-3 flex-wrap flex-shrink-0">
+              {subAllPoints.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => goToPoint(i)}
+                  className={cn('w-2 h-2 rounded-full transition-colors', i === presentationIdx ? 'bg-primary' : 'bg-muted-foreground/30 hover:bg-muted-foreground/60')}
+                />
               ))}
             </div>
-          </section>
+          )}
 
-          <Separator />
-
-          <section className="space-y-1 text-xs text-foreground/60">
-            <p>Created: {new Date(route.created_at).toLocaleString()}</p>
-            <p>Updated: {new Date(route.updated_at).toLocaleString()}</p>
-          </section>
+          <div className="flex items-center gap-2 pt-3 border-t border-border flex-shrink-0">
+            <button onClick={() => goToPoint(presentationIdx - 1)} disabled={presentationIdx === 0}
+              className="flex-1 h-12 flex items-center justify-center gap-1.5 rounded-xl border border-border text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-40 touch-manipulation">
+              <ChevronLeft className="w-4 h-4" /> Prev
+            </button>
+            <button onClick={() => setAutoPlay(!autoPlay)} title={autoPlay ? 'Pause' : 'Auto-advance every 3s'}
+              className={cn('h-12 w-12 flex items-center justify-center rounded-xl border transition-colors flex-shrink-0 touch-manipulation', autoPlay ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-accent')}>
+              {autoPlay ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+            </button>
+            <button onClick={() => goToPoint(presentationIdx + 1)} disabled={presentationIdx === subAllPoints.length - 1}
+              className="flex-1 h-12 flex items-center justify-center gap-1.5 rounded-xl border border-border text-sm font-semibold hover:bg-accent transition-colors disabled:opacity-40 touch-manipulation">
+              Next <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-      </ScrollArea>
+      ) : (
+        <ScrollArea className="flex-1 min-h-0 overflow-hidden">
+          <div className="p-4 space-y-4">
+            {category && (
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="outline" className="font-semibold text-sm" style={{ borderColor: category.color, color: category.color }}>
+                  {category.name}
+                </Badge>
+              </div>
+            )}
+
+            {route.description && (
+              <p className="text-sm text-foreground leading-relaxed">{route.description}</p>
+            )}
+
+            {subAllPoints.length > 0 && (
+              <button
+                onClick={() => {
+                  setPresentationIdx(0);
+                  setPresentationActive(true);
+                  const pt = subAllPoints[0];
+                  if (pt) useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng);
+                }}
+                className="w-full flex items-center justify-center gap-2 h-12 rounded-xl bg-primary/10 text-primary border border-primary/20 text-base font-semibold hover:bg-primary/20 transition-colors touch-manipulation"
+              >
+                <PlayCircle className="w-4 h-4" />
+                Start Presentation
+              </button>
+            )}
+
+            <Separator />
+
+            <section>
+              <p className="text-sm font-bold text-foreground uppercase tracking-wider mb-3">
+                Route Points ({subAllPoints.length})
+              </p>
+              <div className="space-y-4">
+                {subAllPoints.map((pt, i) => (
+                  <button
+                    key={pt.id}
+                    onClick={() => useRouteBuilderStore.getState().flyTo(pt.lat, pt.lng)}
+                    className="w-full flex items-start gap-3 text-left hover:bg-accent/40 rounded-lg px-2 py-1.5 transition-colors touch-manipulation"
+                  >
+                    <div className="flex flex-col items-center flex-shrink-0">
+                      <div className={`w-6 h-6 rounded-full ${pointDotClass(pt)} flex items-center justify-center text-white text-xs font-bold`}>
+                        {pt.icon ?? (i + 1)}
+                      </div>
+                      {i < subAllPoints.length - 1 && <div className="w-px h-5 bg-border mt-1" />}
+                    </div>
+                    <div className="pb-1 min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-foreground">{pt.label}</p>
+                      {pt.category && (
+                        <p className="text-xs text-foreground/70 capitalize mt-0.5">{pt.category}</p>
+                      )}
+                      <p className="text-xs text-foreground/60 font-mono mt-0.5">{pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}</p>
+                      {pt.note && <p className="text-sm text-foreground italic mt-1 leading-snug">{pt.note}</p>}
+                      {pt.imageUrl && <img src={pt.imageUrl} alt={pt.label} className="mt-2 w-full rounded-md object-cover max-h-40" />}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <Separator />
+
+            <section className="space-y-1 text-xs text-foreground/60">
+              <p>Created: {new Date(route.created_at).toLocaleString()}</p>
+              <p>Updated: {new Date(route.updated_at).toLocaleString()}</p>
+            </section>
+          </div>
+        </ScrollArea>
+      )}
     </div>
   );
 }

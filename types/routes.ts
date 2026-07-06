@@ -24,6 +24,7 @@ export interface RoutePoint {
   order: number;
   segmentMode?: 'auto' | 'direct'; // routing from this point TO the next
   position_after?: string;          // for direct waypoints on main routes: 'start' | sub-route-id | undefined (= end)
+  showInFinder?: boolean;           // if true, this point appears in the Find Route dropdown
 }
 
 
