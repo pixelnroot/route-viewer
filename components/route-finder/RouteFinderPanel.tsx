@@ -2,12 +2,12 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Search, Navigation, X, ChevronDown, Route, AlertCircle, Loader2, Map } from 'lucide-react';
+import { Search, Navigation, X, ChevronDown, Route, AlertCircle, Loader2, Map, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRouteFinderStore } from '@/lib/store/route-finder-store';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
-import type { NamedLocation } from '@/lib/route-finder/types';
+import type { NamedLocation } from '@/types/graph';
 
 // ── Location combobox ─────────────────────────────────────────────────────────
 
@@ -15,7 +15,10 @@ function LocationCombobox({
   label,
   placeholder,
   value,
+  pickedPoint,
+  isPicking,
   onChange,
+  onPickOnMap,
   locations,
   excludeId,
   icon: Icon,
@@ -24,7 +27,10 @@ function LocationCombobox({
   label: string;
   placeholder: string;
   value: string | null;
+  pickedPoint: { lat: number; lng: number } | null;
+  isPicking: boolean;
   onChange: (id: string | null) => void;
+  onPickOnMap: () => void;
   locations: NamedLocation[];
   excludeId?: string | null;
   icon: React.ElementType;
@@ -36,6 +42,13 @@ function LocationCombobox({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const selected = locations.find((l) => l.id === value) ?? null;
+  const displayText = selected
+    ? selected.label
+    : pickedPoint
+    ? `📍 ${pickedPoint.lat.toFixed(5)}, ${pickedPoint.lng.toFixed(5)}`
+    : isPicking
+    ? 'Click a position on the map…'
+    : null;
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -80,10 +93,10 @@ function LocationCombobox({
         )}
       >
         <Icon className={cn('w-4 h-4 flex-shrink-0', iconColor)} />
-        <span className={cn('flex-1 truncate', selected ? 'text-foreground font-medium' : 'text-muted-foreground')}>
-          {selected ? selected.label : placeholder}
+        <span className={cn('flex-1 truncate', selected || pickedPoint ? 'text-foreground font-medium' : 'text-muted-foreground')}>
+          {displayText ?? placeholder}
         </span>
-        {selected ? (
+        {selected || pickedPoint ? (
           <span
             role="button"
             tabIndex={0}
@@ -112,6 +125,14 @@ function LocationCombobox({
               />
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => { onPickOnMap(); setOpen(false); setQuery(''); }}
+            className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent transition-colors flex items-center gap-2 border-b border-border text-primary font-medium"
+          >
+            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+            Pick a position on the map
+          </button>
           <div className="max-h-48 overflow-y-auto">
             {filtered.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">No locations found</p>
@@ -143,8 +164,9 @@ export default function RouteFinderPanel() {
   const selectRoute = useRouteBuilderStore((s) => s.selectRoute);
   const {
     finderStartId, finderEndId, finderLocations, finderResults,
+    finderStartPoint, finderEndPoint, finderPickTarget,
     finderActiveIdx, finderLoading, finderError,
-    setFinderStartId, setFinderEndId, setFinderLocations,
+    setFinderStartId, setFinderEndId, setFinderLocations, setFinderPickTarget,
     setFinderResults, setFinderActiveIdx, setFinderLoading, setFinderError, resetFinder,
   } = useRouteFinderStore();
 
@@ -171,15 +193,23 @@ export default function RouteFinderPanel() {
     setFinderEndId(null);
   }, [setFinderStartId, setFinderEndId]);
 
+  const hasStart = !!finderStartId || !!finderStartPoint;
+  const hasEnd = !!finderEndId || !!finderEndPoint;
+
   const handleFind = async () => {
-    if (!finderStartId || !finderEndId || !viewKey) return;
+    if (!hasStart || !hasEnd || !viewKey) return;
     setFinderLoading(true);
     setFinderError(null);
     try {
       const res = await fetch('/api/route-finder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${viewKey}` },
-        body: JSON.stringify({ startLocationId: finderStartId, endLocationId: finderEndId }),
+        body: JSON.stringify({
+          startLocationId: finderStartId ?? undefined,
+          startPoint: finderStartPoint ?? undefined,
+          endLocationId: finderEndId ?? undefined,
+          endPoint: finderEndPoint ?? undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed');
@@ -192,7 +222,7 @@ export default function RouteFinderPanel() {
     }
   };
 
-  const canFind = !!finderStartId && !!finderEndId && !finderLoading;
+  const canFind = hasStart && hasEnd && !finderLoading;
   const hasResults = finderResults.length > 0; // used in Clear button condition
 
   return (
@@ -204,7 +234,7 @@ export default function RouteFinderPanel() {
             <Route className="w-4 h-4 text-primary" />
             <h2 className="text-sm font-bold text-foreground">Find Route</h2>
           </div>
-          {(finderStartId || finderEndId || hasResults) && (
+          {(finderStartId || finderEndId || finderStartPoint || finderEndPoint || finderPickTarget || hasResults) && (
             <button
               onClick={resetFinder}
               className="text-muted-foreground hover:text-foreground text-xs flex items-center gap-1 transition-colors"
@@ -218,7 +248,10 @@ export default function RouteFinderPanel() {
           label="From"
           placeholder="Select start location"
           value={finderStartId}
+          pickedPoint={finderStartPoint}
+          isPicking={finderPickTarget === 'start'}
           onChange={handleStartChange}
+          onPickOnMap={() => setFinderPickTarget('start')}
           locations={finderLocations}
           excludeId={finderEndId}
           icon={Navigation}
@@ -229,7 +262,10 @@ export default function RouteFinderPanel() {
           label="To"
           placeholder="Select destination"
           value={finderEndId}
+          pickedPoint={finderEndPoint}
+          isPicking={finderPickTarget === 'end'}
           onChange={setFinderEndId}
+          onPickOnMap={() => setFinderPickTarget('end')}
           locations={finderLocations}
           excludeId={finderStartId}
           icon={Navigation}

@@ -43,6 +43,9 @@ jobs:
           cp -r public               _release/public
           cp ecosystem.config.cjs    _release/
           cp .env.example            _release/ 2>/dev/null || true
+          # Never ship data files — the server's data/ (routes.json, graph.json,
+          # categories.json) is the live database and must not be overwritten.
+          rm -rf _release/data
           tar -czf field-data-${{ steps.version.outputs.tag }}.tar.gz -C _release .
 
       - name: Create GitHub Release

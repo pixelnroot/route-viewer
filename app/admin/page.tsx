@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import {
   Plus, Trash2, ChevronDown, ChevronUp, Tag,
   LogOut, Shield, Route, Loader2, AlertCircle, Pencil, Layers, X, Menu, ChevronLeft,
+  Waypoints,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import RouteBuilder from '@/components/routes/RouteBuilder';
 import MainRouteBuilder from '@/components/routes/MainRouteBuilder';
+import GraphAdminPanel from '@/components/graph/GraphAdminPanel';
+import { useGraphStore } from '@/lib/store/graph-store';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { cn } from '@/lib/utils';
@@ -277,7 +280,7 @@ function AdminSidebar({ editKey, onLogout, onClose }: { editKey: string; onLogou
     setCategoryFilter, resetBuilder, resetMainBuilder,
   } = useRouteBuilderStore();
 
-  const [activeTab, setActiveTab] = useState<'sub' | 'main'>('sub');
+  const [activeTab, setActiveTab] = useState<'sub' | 'main' | 'graph'>('sub');
   const [showCategories, setShowCategories] = useState(false);
   const catMap = new Map(categories.map((c) => [c.id, c]));
 
@@ -396,10 +399,22 @@ function AdminSidebar({ editKey, onLogout, onClose }: { editKey: string; onLogou
             {mainCount}
           </span>
         </button>
+        <button
+          onClick={() => { setActiveTab('graph'); useGraphStore.getState().setGraphAdminMode('view'); }}
+          className={cn(
+            'flex-1 py-3 text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 min-h-[48px]',
+            activeTab === 'graph'
+              ? 'text-foreground border-b-2 border-primary bg-accent/40'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/20'
+          )}
+        >
+          <Waypoints className="w-4 h-4" />
+          Graph
+        </button>
       </div>
 
       {/* Category filter chips */}
-      {categories.length > 0 && (
+      {activeTab !== 'graph' && categories.length > 0 && (
         <div className="px-3 py-2.5 flex-shrink-0 border-b border-border">
           <div className="flex gap-1.5 flex-wrap">
             <button
@@ -433,6 +448,7 @@ function AdminSidebar({ editKey, onLogout, onClose }: { editKey: string; onLogou
       )}
 
       {/* Create button (tab-contextual) */}
+      {activeTab !== 'graph' && (
       <div className="px-3 py-2.5 flex-shrink-0">
         <Button
           onClick={activeTab === 'sub' ? handleCreate_ : handleCreateMain_}
@@ -446,11 +462,15 @@ function AdminSidebar({ editKey, onLogout, onClose }: { editKey: string; onLogou
           )}
         </Button>
       </div>
+      )}
 
       <Separator />
 
-      {/* Route list */}
+      {/* Route list / graph tools */}
       <ScrollArea className="flex-1 min-h-0 overflow-hidden">
+        {activeTab === 'graph' ? (
+          <GraphAdminPanel />
+        ) : (
         <div className="p-3 space-y-2">
           {filteredRoutes.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-6">
@@ -474,6 +494,7 @@ function AdminSidebar({ editKey, onLogout, onClose }: { editKey: string; onLogou
             ))
           )}
         </div>
+        )}
       </ScrollArea>
 
       <Separator />

@@ -5,6 +5,7 @@ import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 import { Layers } from 'lucide-react';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
 import { useRouteFinderStore } from '@/lib/store/route-finder-store';
+import { useGraphStore } from '@/lib/store/graph-store';
 import { Button } from '@/components/ui/button';
 import type { PointType, RoutePoint, SavedRoute } from '@/types/routes';
 import { nearestCoordIndex } from '@/lib/utils';
@@ -217,6 +218,8 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
   const finderPolylinesRef = useRef<globalThis.Map<string, google.maps.Polyline>>(new globalThis.Map());
   const finderMarkersRef = useRef<google.maps.Marker[]>([]);
 
+  const graphOverlayRef = useRef<{ polys: google.maps.Polyline[]; markers: google.maps.Marker[] }>({ polys: [], markers: [] });
+
   const [mapType, setMapType] = useState<MapType>('roadmap');
   const [menuOpen, setMenuOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
@@ -341,6 +344,14 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
         // If user clicked a Google Maps POI, let native info window open — don't intercept
         if (e.placeId) return;
         closePickerRef.current();
+        // Finder "pick a position on the map" capture
+        const finder = useRouteFinderStore.getState();
+        if (finder.finderPickTarget && e.latLng) {
+          const p = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+          if (finder.finderPickTarget === 'start') finder.setFinderStartPoint(p);
+          else finder.setFinderEndPoint(p);
+          return;
+        }
         const { mode: m, builderMode: bm, addPointAtLatLng: add, setClickedCoord, trimTarget, setTrimTarget } = useRouteBuilderStore.getState();
         if (m === 'create' && bm === 'main' && trimTarget) {
           setTrimTarget(null);
@@ -816,9 +827,10 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
       });
     });
 
-    // Start pin (green) and end pin (red)
-    const startLoc = finderLocations.find((l) => l.id === finderStartId);
-    const endLoc = finderLocations.find((l) => l.id === finderEndId);
+    // Start pin (green) and end pin (red) — named location or map-picked point
+    const { finderStartPoint, finderEndPoint } = useRouteFinderStore.getState();
+    const startLoc = finderLocations.find((l) => l.id === finderStartId) ?? finderStartPoint;
+    const endLoc = finderLocations.find((l) => l.id === finderEndId) ?? finderEndPoint;
     const pinDefs = [
       { loc: startLoc, color: '#22c55e' },
       { loc: endLoc, color: '#ef4444' },
@@ -847,6 +859,63 @@ export default function MapView({ adminMode = false }: { adminMode?: boolean }) 
     });
     if (hasBounds) map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 360 });
   }, [finderResults, finderActiveIdx, finderLocations, finderStartId, finderEndId, mapReady, savedRoutes]);
+
+  // Graph admin overlay: edges as thin polylines (bridges dashed orange), nodes
+  // as clickable circles (place = filled, junction = hollow). Self-contained —
+  // touches nothing outside graphOverlayRef.
+  const { graphData, graphAdminMode, connectorNodeA, connectorNodeB, selectedNodeId } = useGraphStore();
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    graphOverlayRef.current.polys.forEach((p) => p.setMap(null));
+    graphOverlayRef.current.markers.forEach((m) => m.setMap(null));
+    graphOverlayRef.current = { polys: [], markers: [] };
+
+    if (!adminMode || graphAdminMode === 'off' || !graphData) return;
+
+    for (const edge of graphData.edges) {
+      const path = (edge.geometry.coordinates as [number, number][]).map(([lng, lat]) => ({ lat, lng }));
+      const isBridge = edge.source === 'bridge';
+      graphOverlayRef.current.polys.push(new google.maps.Polyline({
+        path, geodesic: true, map, clickable: false, zIndex: 4,
+        strokeColor: isBridge ? '#f97316' : '#6366f1',
+        strokeOpacity: isBridge ? 0 : 0.7,
+        strokeWeight: 2.5,
+        ...(isBridge ? {
+          icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#f97316', strokeWeight: 2.5, scale: 2 }, offset: '0', repeat: '12px' }],
+        } : {}),
+      }));
+    }
+
+    for (const node of graphData.nodes) {
+      const isConnectorPick = node.id === connectorNodeA || node.id === connectorNodeB;
+      const isSelected = node.id === selectedNodeId;
+      const m = new google.maps.Marker({
+        position: { lat: node.lat, lng: node.lng }, map, zIndex: isConnectorPick || isSelected ? 60 : 50,
+        title: node.name ?? '(unnamed junction)',
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: isConnectorPick || isSelected ? 9 : 6,
+          fillColor: isConnectorPick ? '#f59e0b' : isSelected ? '#ec4899' : node.kind === 'place' ? '#6366f1' : '#ffffff',
+          fillOpacity: node.kind === 'place' || isConnectorPick || isSelected ? 1 : 0.9,
+          strokeColor: node.kind === 'place' ? '#ffffff' : '#6366f1',
+          strokeWeight: 2,
+        },
+      });
+      m.addListener('click', () => {
+        const gs = useGraphStore.getState();
+        if (gs.graphAdminMode === 'connector') {
+          if (!gs.connectorNodeA) gs.setConnectorNode('A', node.id);
+          else if (!gs.connectorNodeB && node.id !== gs.connectorNodeA) gs.setConnectorNode('B', node.id);
+          else { gs.setConnectorNode('A', node.id); gs.setConnectorNode('B', null); }
+        } else {
+          gs.setSelectedNodeId(node.id === gs.selectedNodeId ? null : node.id);
+        }
+      });
+      graphOverlayRef.current.markers.push(m);
+    }
+  }, [graphData, graphAdminMode, connectorNodeA, connectorNodeB, selectedNodeId, mapReady, adminMode]);
 
   return (
     <div className="relative w-full h-full">

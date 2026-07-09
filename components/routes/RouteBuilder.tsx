@@ -17,8 +17,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import RoutePointList from './RoutePointList';
 import RouteColorPicker from './RouteColorPicker';
+import JunctionReviewPanel from '@/components/graph/JunctionReviewPanel';
 import { useRouteBuilderStore } from '@/lib/store/route-builder-store';
+import { useGraphStore } from '@/lib/store/graph-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import type { SavedRoute } from '@/types/routes';
+import type { CompileResult, SubrouteDraft } from '@/lib/graph/compiler';
 import { fetchRouteGoogle } from '@/lib/routing/google-directions';
 import { haversineDistance, formatDistance, formatDuration } from '@/lib/routing/osrm';
 import type { TravelMode, PointType, PoiCategory, RoutePoint } from '@/types/routes';
@@ -63,6 +67,7 @@ export default function RouteBuilder() {
   } = useRouteBuilderStore();
 
   const { editKey, setEditKey } = useAuthStore();
+  const { pendingCompile, setPendingCompile } = useGraphStore();
 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -231,51 +236,66 @@ export default function RouteBuilder() {
     }
   };
 
+  const finishSave = (saved: SavedRoute) => {
+    if (editingRouteId) {
+      updateSavedRoute(saved);
+      selectRoute(saved.id);
+    } else {
+      addSavedRoute(saved);
+    }
+    resetBuilder();
+    setMode('view');
+  };
+
+  const buildDraft = (): SubrouteDraft => ({
+    id: editingRouteId ?? undefined,
+    geometry: generatedGeometry!,
+    points,
+    meta: {
+      name: meta.name!,
+      description: meta.description ?? '',
+      color: meta.color ?? '#3b82f6',
+      status: meta.status ?? 'draft',
+      risk_level: meta.risk_level ?? 'low',
+      travel_mode: meta.travel_mode ?? 'driving',
+      category_id: meta.category_id,
+      has_checkpost: meta.has_checkpost ?? false,
+    },
+  });
+
+  // Compile the draft against the graph. Junction proposals open the review
+  // panel; a clean compile applies immediately.
   const handleSave = async () => {
     if (!canSave) return;
     setIsSaving(true);
     setSaveError(null);
     try {
-      const body = {
-        name: meta.name!,
-        description: meta.description ?? '',
-        color: meta.color ?? '#3b82f6',
-        status: meta.status ?? 'draft',
-        risk_level: meta.risk_level ?? 'low',
-        travel_mode: meta.travel_mode ?? 'driving',
-        category_id: meta.category_id,
-        has_checkpost: meta.has_checkpost ?? false,
-        points,
-        geometry: generatedGeometry,
-      };
-
-      const isEdit = !!editingRouteId;
-      const url = isEdit ? `/api/routes/${editingRouteId}` : '/api/routes';
-      const method = isEdit ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${editKey}`,
-        },
-        body: JSON.stringify(body),
+      const draft = buildDraft();
+      const compileRes = await fetch('/api/graph/subroutes/compile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${editKey}` },
+        body: JSON.stringify(draft),
       });
-      if (res.status === 401) {
+      if (compileRes.status === 401) {
         setEditKey('');
         throw new Error('Invalid Edit Admin Key. Please try again.');
       }
-      if (!res.ok) throw new Error(`Save failed: ${res.status}`);
-      const saved = await res.json();
+      if (!compileRes.ok) throw new Error(`Compile failed: ${compileRes.status}`);
+      const result = (await compileRes.json()) as CompileResult;
 
-      if (isEdit) {
-        updateSavedRoute(saved);
-        selectRoute(saved.id);
-      } else {
-        addSavedRoute(saved);
+      if (result.proposals.length > 0) {
+        setPendingCompile({ draft, result, decisions: {} });
+        return; // JunctionReviewPanel takes over
       }
-      resetBuilder();
-      setMode('view');
+
+      const applyRes = await fetch('/api/graph/subroutes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${editKey}` },
+        body: JSON.stringify({ draft, acceptedProposals: [] }),
+      });
+      if (!applyRes.ok) throw new Error(`Save failed: ${applyRes.status}`);
+      const data = await applyRes.json();
+      finishSave(data.savedRoute as SavedRoute);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
@@ -627,6 +647,9 @@ export default function RouteBuilder() {
 
       {/* Footer actions */}
       <div className="px-4 py-3 border-t border-border flex-shrink-0 space-y-2">
+        {pendingCompile && (
+          <JunctionReviewPanel onApplied={finishSave} onCancel={() => setSaveError(null)} />
+        )}
         <Button
           onClick={handleGenerate}
           disabled={!canGenerate || isGenerating}
@@ -648,7 +671,7 @@ export default function RouteBuilder() {
 
         <Button
           onClick={handleSave}
-          disabled={!canSave || isSaving}
+          disabled={!canSave || isSaving || !!pendingCompile}
           className="w-full h-12 text-base"
         >
           {isSaving ? (
